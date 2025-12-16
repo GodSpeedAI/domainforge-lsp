@@ -3,7 +3,70 @@
 //! This module provides functions to convert sea-core validation errors
 //! into LSP diagnostics that can be displayed in the editor.
 
+use sea_core::parser::ParseError;
 use tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity, NumberOrString, Position, Range};
+
+/// Convert a sea-core `ParseError` to an LSP `Diagnostic`.
+///
+/// This function handles various parse error types from sea-core and converts
+/// them into LSP diagnostics with appropriate ranges and error codes.
+///
+/// # Arguments
+/// * `error` - The parse error from sea-core
+///
+/// # Returns
+/// An LSP `Diagnostic` ready to be published to the client
+pub fn parse_error_to_diagnostic(error: &ParseError) -> Diagnostic {
+    match error {
+        ParseError::SyntaxError {
+            message,
+            line,
+            column,
+        } => {
+            // For syntax errors, we have precise location info
+            // Mark a small range at the error position (10 characters)
+            let range = sea_range_to_lsp_range(*line, *column, *line, *column + 10);
+            error_diagnostic(range, message.clone(), "E005".to_string())
+        }
+        ParseError::UndefinedEntity(name) => {
+            let range = sea_range_to_lsp_range(1, 1, 1, 1);
+            error_diagnostic(
+                range,
+                format!("Undefined entity: {}", name),
+                "E001".to_string(),
+            )
+        }
+        ParseError::UndefinedResource(name) => {
+            let range = sea_range_to_lsp_range(1, 1, 1, 1);
+            error_diagnostic(
+                range,
+                format!("Undefined resource: {}", name),
+                "E002".to_string(),
+            )
+        }
+        ParseError::DuplicateDeclaration(name) => {
+            let range = sea_range_to_lsp_range(1, 1, 1, 1);
+            error_diagnostic(
+                range,
+                format!("Duplicate declaration: {}", name),
+                "E007".to_string(),
+            )
+        }
+        ParseError::TypeError { message, location } => {
+            let range = sea_range_to_lsp_range(1, 1, 1, 1);
+            error_diagnostic(
+                range,
+                format!("{} at {}", message, location),
+                "E004".to_string(),
+            )
+        }
+        _ => {
+            // For other errors, show at file start with the error message
+            let range = sea_range_to_lsp_range(1, 1, 1, 1);
+            error_diagnostic(range, error.to_string(), "E000".to_string())
+        }
+    }
+}
 
 /// Convert a sea-core source range to an LSP range.
 ///

@@ -2,7 +2,7 @@
 
 > **Purpose**: MECE (Mutually Exclusive, Collectively Exhaustive) implementation plan for the DomainForge LSP and VS Code extension. Each checkbox represents a discrete unit of work for the implementing agent to mark complete.
 >
-> **Last Updated**: 2025-12-15
+> **Last Updated**: 2025-12-16
 
 ---
 
@@ -103,60 +103,60 @@
 
 ### 1.1 Tower-LSP Scaffold
 
-- [ ] **Backend Struct Implementation**
+- [x] **Backend Struct Implementation**
 
-  - [ ] Define `Backend` struct with `RwLock<HashMap<Url, String>>` for document storage
-  - [ ] Implement `tower_lsp::LanguageServer` trait for `Backend`
-  - [ ] Implement `initialize` with capability declaration
-  - [ ] Implement `initialized` with logging
-  - [ ] Implement `shutdown`
+  - [x] Define `Backend` struct with `RwLock<HashMap<Url, String>>` for document storage
+  - [x] Implement `tower_lsp::LanguageServer` trait for `Backend`
+  - [x] Implement `initialize` with capability declaration
+  - [x] Implement `initialized` with logging
+  - [x] Implement `shutdown`
 
-- [ ] **Text Document Sync**
+- [x] **Text Document Sync**
 
-  - [ ] Implement `textDocument/didOpen` — store full content
-  - [ ] Implement `textDocument/didChange` — apply incremental changes
-  - [ ] Implement `textDocument/didClose` — remove from storage
-  - [ ] Implement `textDocument/didSave` — trigger validation
+  - [x] Implement `textDocument/didOpen` — store full content
+  - [x] Implement `textDocument/didChange` — apply incremental changes
+  - [x] Implement `textDocument/didClose` — remove from storage
+  - [x] Implement `textDocument/didSave` — trigger validation
 
-- [ ] **Server Entry Point**
-  - [ ] Configure `tokio` runtime in `main.rs`
-  - [ ] Create `tower_lsp::Server` with stdio transport
-  - [ ] Wire `Backend` to server
-  - [ ] Add startup logging to stderr
+- [x] **Server Entry Point**
+  - [x] Configure `tokio` runtime in `main.rs`
+  - [x] Create `tower_lsp::Server` with stdio transport
+  - [x] Wire `Backend` to server
+  - [x] Add startup logging to stderr
 
 ### 1.2 Diagnostics Integration
 
-- [ ] **Validation Pipeline**
+- [x] **Validation Pipeline**
 
-  - [ ] On open/change/save: call `sea_core::parser::parse_to_graph`
-  - [ ] Capture `ParseResult` errors
-  - [ ] If additional validation exists, call `sea_core` validation
+  - [x] On open/change/save: call `sea_core::parser::parse_to_graph`
+  - [x] Capture `ParseResult` errors
+  - [x] If additional validation exists, call `sea_core` validation
 
-- [ ] **Diagnostic Mapping**
+- [x] **Diagnostic Mapping**
 
-  - [ ] Create `fn validation_error_to_diagnostic(e: &ValidationError) -> lsp::Diagnostic`
-  - [ ] Map `sea_core::validation_error::SourceRange` → `lsp::Range` (subtract 1 for 0-indexing)
-  - [ ] Map `ErrorCode` → `diagnostic.code`
-  - [ ] Map error message → `diagnostic.message`
-  - [ ] Map severity appropriately (Error/Warning/Info/Hint)
+  - [x] Create `fn parse_error_to_diagnostic(e: &ParseError) -> lsp::Diagnostic`
+  - [x] Map `sea_core::validation_error::SourceRange` → `lsp::Range` (subtract 1 for 0-indexing)
+  - [x] Map `ErrorCode` → `diagnostic.code`
+  - [x] Map error message → `diagnostic.message`
+  - [x] Map severity appropriately (Error/Warning/Info/Hint)
 
-- [ ] **Publish Diagnostics**
-  - [ ] Call `client.publish_diagnostics(uri, diagnostics, version)` after validation
-  - [ ] Clear diagnostics when document closes
+- [x] **Publish Diagnostics**
+  - [x] Call `client.publish_diagnostics(uri, diagnostics, version)` after validation
+  - [x] Clear diagnostics when document closes
 
 ### 1.3 Unit Tests for Phase 1
 
-- [ ] **Test Document Storage**
+- [x] **Test Document Storage**
 
-  - [ ] Test `didOpen` stores content correctly
-  - [ ] Test `didChange` applies incremental edits
-  - [ ] Test `didClose` removes content
+  - [x] Test `didOpen` stores content correctly
+  - [x] Test `didChange` applies incremental edits
+  - [x] Test `didClose` removes content
 
-- [ ] **Test Diagnostic Mapping**
-  - [ ] Test valid `.sea` produces empty diagnostics
-  - [ ] Test syntax error produces E003 diagnostic
-  - [ ] Test undefined entity produces E001 diagnostic
-  - [ ] Test range conversion is correct (1-based → 0-based)
+- [x] **Test Diagnostic Mapping**
+  - [x] Test valid `.sea` produces empty diagnostics
+  - [x] Test syntax error produces E005 diagnostic
+  - [x] Test undefined entity produces E001 diagnostic
+  - [x] Test range conversion is correct (1-based → 0-based)
 
 ---
 
@@ -166,42 +166,42 @@
 
 ### 2.1 Format Provider
 
-- [ ] **Capability Declaration**
+- [x] **Capability Declaration**
 
-  - [ ] Add `documentFormattingProvider: true` to server capabilities
+  - [x] Add `documentFormattingProvider: true` to server capabilities
 
-- [ ] **Handler Implementation**
+- [x] **Handler Implementation**
 
-  - [ ] Implement `textDocument/formatting` request handler
-  - [ ] Extract formatting options from request (indent style, width)
-  - [ ] Map to `sea_core::formatter::FormatConfig`
-  - [ ] Call `sea_core::formatter::format(source, config)`
-  - [ ] Return `Vec<TextEdit>` replacing entire document (or compute minimal diff)
+  - [x] Implement `textDocument/formatting` request handler
+  - [x] Extract formatting options from request (indent style, width)
+  - [x] Map to `sea_core::formatter::FormatConfig`
+  - [x] Call `sea_core::formatter::format(source, config)`
+  - [x] Return `Vec<TextEdit>` replacing entire document (or compute minimal diff)
 
-- [ ] **Error Handling**
-  - [ ] If source has parse errors, return empty edits (don't format broken code)
-  - [ ] Log formatting errors to stderr for debugging
+- [x] **Error Handling**
+  - [x] If source has parse errors, return empty edits (don't format broken code)
+  - [x] Log formatting errors to stderr for debugging
 
 ### 2.2 Configuration Sync
 
-- [ ] **Server-Side Config**
+- [x] **Server-Side Config**
 
-  - [ ] Define config struct matching spec section 8 options
-  - [ ] Implement `workspace/didChangeConfiguration` handler
-  - [ ] Store configuration in `Backend`
+  - [x] Define config struct matching spec section 8 options
+  - [x] Implement `workspace/didChangeConfiguration` handler
+  - [x] Store configuration in `Backend`
 
-- [ ] **Client-Side Config Forwarding**
-  - [ ] In extension, listen for configuration changes
-  - [ ] Send `workspace/didChangeConfiguration` notification to server
-  - [ ] Include relevant `domainforge.*` settings
+- [x] **Client-Side Config Forwarding**
+  - [x] In extension, listen for configuration changes
+  - [x] Send `workspace/didChangeConfiguration` notification to server
+  - [x] Include relevant `domainforge.*` settings
 
 ### 2.3 Unit Tests for Phase 2
 
-- [ ] **Test Formatting**
-  - [ ] Test well-formed `.sea` file returns formatted output
-  - [ ] Test malformed `.sea` file returns empty edits
-  - [ ] Test indent style option is respected
-  - [ ] Test indent width option is respected
+- [x] **Test Formatting**
+  - [x] Test well-formed `.sea` file returns formatted output
+  - [x] Test malformed `.sea` file returns empty edits
+  - [x] Test indent style option is respected
+  - [x] Test indent width option is respected
 
 ---
 
@@ -427,7 +427,165 @@
 
 ---
 
-## Phase 7: Release & Distribution
+## Phase 8: MCP Server Integration
+
+> **Goal**: Enable AI agents (e.g., VS Code Copilot, Claude) to query the DomainForge LSP via the Model Context Protocol (MCP). The MCP server acts as a safe, controlled bridge between AI agents and the language server.
+
+### 8.1 Architecture Overview
+
+- [ ] **Component Topology**
+
+  - [ ] Document the data flow: `VS Code Extension (Node/TS) → MCP Server (Rust) → Rust LSP (stdio)`
+  - [ ] Define MCP server as a separate binary target in `Cargo.toml`: `[[bin]] name = "domainforge-mcp"`
+  - [ ] Design the MCP server to spawn/connect to the LSP server per workspace
+  - [ ] Treat the LSP as the single source of truth for all language features
+
+- [ ] **Crate Structure**
+  - [ ] Create `src/mcp/mod.rs` for MCP server implementation
+  - [ ] Create `src/mcp/tools.rs` for exposed tool definitions
+  - [ ] Create `src/mcp/guardrails.rs` for security and rate limiting
+  - [ ] Create `src/mcp/transport.rs` for MCP protocol handling
+
+### 8.2 MCP Tool Exposure
+
+> **Principle**: Expose read-only, safe operations. No auto-apply mutations without human confirmation.
+
+- [ ] **Diagnostics Tool**
+
+  - [ ] Implement `domainforge/diagnostics` tool
+  - [ ] Accept: `uri: string` (file path)
+  - [ ] Return: Array of diagnostics with severity, message, range, code
+  - [ ] Rate limit: Max 10 requests/second per workspace
+
+- [ ] **Hover Tool**
+
+  - [ ] Implement `domainforge/hover` tool
+  - [ ] Accept: `uri: string`, `line: number`, `character: number`
+  - [ ] Return: Hover content (markdown) or null
+  - [ ] Rate limit: Max 20 requests/second per workspace
+
+- [ ] **Definition Tool**
+
+  - [ ] Implement `domainforge/definition` tool
+  - [ ] Accept: `uri: string`, `line: number`, `character: number`
+  - [ ] Return: Location(s) of definition or empty array
+  - [ ] Rate limit: Max 10 requests/second per workspace
+
+- [ ] **References Tool**
+
+  - [ ] Implement `domainforge/references` tool
+  - [ ] Accept: `uri: string`, `line: number`, `character: number`, `includeDeclaration: boolean`
+  - [ ] Return: Array of locations
+  - [ ] Rate limit: Max 5 requests/second per workspace
+
+- [ ] **Rename Preview Tool**
+
+  - [ ] Implement `domainforge/rename-preview` tool
+  - [ ] Accept: `uri: string`, `line: number`, `character: number`, `newName: string`
+  - [ ] Return: `WorkspaceEdit` preview (NOT applied automatically)
+  - [ ] Flag response with `requiresHumanApproval: true`
+  - [ ] Rate limit: Max 2 requests/second per workspace
+
+- [ ] **Code Actions Tool (Read-Only)**
+  - [ ] Implement `domainforge/code-actions` tool
+  - [ ] Accept: `uri: string`, `range: Range`, `context: CodeActionContext`
+  - [ ] Return: Array of available code actions with titles and kinds
+  - [ ] Do NOT auto-apply; return `WorkspaceEdit` preview for each action
+  - [ ] Flag response with `requiresHumanApproval: true`
+  - [ ] Rate limit: Max 5 requests/second per workspace
+
+### 8.3 Guardrails & Security
+
+- [ ] **Path Allowlists**
+
+  - [ ] Accept workspace root(s) at MCP server initialization
+  - [ ] Validate all `uri` parameters against allowlist before processing
+  - [ ] Reject requests for files outside allowed paths with clear error
+  - [ ] Support glob patterns for fine-grained access control
+
+- [ ] **Repo-Scoped Access**
+
+  - [ ] Bind MCP server instance to specific workspace/repository
+  - [ ] Prevent cross-workspace information leakage
+  - [ ] Include workspace identifier in all tool responses
+
+- [ ] **Rate Limiting**
+
+  - [ ] Implement token bucket rate limiter per tool type
+  - [ ] Configure limits via environment variables or config file
+  - [ ] Return `429 Too Many Requests` equivalent for exceeded limits
+  - [ ] Log rate limit violations for monitoring
+
+- [ ] **Human-in-the-Loop Apply**
+
+  - [ ] Never auto-apply `WorkspaceEdit` mutations
+  - [ ] Return edits as preview data with `requiresHumanApproval: true`
+  - [ ] Document the expected client-side confirmation flow
+  - [ ] Optionally implement `domainforge/apply-edit` tool gated by explicit user confirmation token
+
+- [ ] **Audit Logging**
+  - [ ] Log all MCP tool invocations with timestamp, tool name, parameters (sanitized)
+  - [ ] Log all denied requests with reason
+  - [ ] Support configurable log destinations (stderr, file, external service)
+
+### 8.4 MCP Server Entry Point
+
+- [ ] **Binary Configuration**
+
+  - [ ] Add `src/mcp/main.rs` as entry point for `domainforge-mcp` binary
+  - [ ] Accept `--workspace-root` argument for path allowlist initialization
+  - [ ] Accept `--lsp-path` argument to locate the LSP server binary
+  - [ ] Support `--config` for JSON/TOML configuration file
+
+- [ ] **LSP Server Management**
+
+  - [ ] Spawn LSP server as child process with stdio transport
+  - [ ] Implement reconnection logic on LSP server crash
+  - [ ] Forward initialization params from MCP config to LSP
+
+- [ ] **MCP Protocol Transport**
+  - [ ] Implement MCP protocol over stdio (for CLI/agent integration)
+  - [ ] Optionally support HTTP SSE transport for web-based agents
+  - [ ] Handle MCP `initialize`, `tools/list`, `tools/call` methods
+
+### 8.5 VS Code Extension Integration
+
+- [ ] **MCP Server Lifecycle**
+
+  - [ ] Spawn `domainforge-mcp` alongside or instead of direct LSP spawn
+  - [ ] Pass workspace folder paths as allowlist
+  - [ ] Handle MCP server process lifecycle (start, stop, restart)
+
+- [ ] **Configuration Options**
+  - [ ] Add `domainforge.mcp.enable: boolean` setting (default: false)
+  - [ ] Add `domainforge.mcp.rateLimits` object for per-tool limits
+  - [ ] Add `domainforge.mcp.auditLog.path` for log file location
+
+### 8.6 Unit Tests for Phase 8
+
+- [ ] **Test Tool Responses**
+
+  - [ ] Test `domainforge/diagnostics` returns correct format
+  - [ ] Test `domainforge/hover` returns markdown content
+  - [ ] Test `domainforge/definition` returns valid locations
+  - [ ] Test `domainforge/references` includes declaration when requested
+  - [ ] Test `domainforge/rename-preview` returns non-applied edit
+  - [ ] Test `domainforge/code-actions` returns edits with approval flag
+
+- [ ] **Test Guardrails**
+
+  - [ ] Test path allowlist rejects out-of-workspace files
+  - [ ] Test rate limiter correctly throttles requests
+  - [ ] Test denied requests are logged
+
+- [ ] **Test LSP Integration**
+  - [ ] Test MCP server correctly forwards requests to LSP
+  - [ ] Test MCP server handles LSP server restart gracefully
+  - [ ] Test workspace scoping prevents cross-workspace access
+
+---
+
+## Phase 9: Release & Distribution
 
 > **Goal**: Publish to VS Code Marketplace and establish release process.
 
@@ -476,16 +634,17 @@
 
 ## Verification Plan Summary
 
-| Phase | Verification Method       | Command/Steps                                                |
-| ----- | ------------------------- | ------------------------------------------------------------ |
-| 0     | CI passes                 | `cargo test`, `pnpm test`, GitHub Actions green              |
-| 1     | Unit tests + manual       | `cargo test -p domainforge-lsp`, open `.sea` in VS Code      |
-| 2     | Unit tests + manual       | `cargo test`, execute Format Document command                |
-| 3     | Integration test + manual | `pnpm test`, open extension in debug host, check diagnostics |
-| 4     | Unit tests                | `cargo test` for all providers                               |
-| 5     | Unit tests                | `cargo test` for code actions                                |
-| 6     | WASM tests + manual       | Test in vscode.dev (if pursued)                              |
-| 7     | Manual                    | Install from VSIX, verify all features                       |
+| Phase | Verification Method       | Command/Steps                                                                |
+| ----- | ------------------------- | ---------------------------------------------------------------------------- |
+| 0     | CI passes                 | `cargo test`, `pnpm test`, GitHub Actions green                              |
+| 1     | Unit tests + manual       | `cargo test -p domainforge-lsp`, open `.sea` in VS Code                      |
+| 2     | Unit tests + manual       | `cargo test`, execute Format Document command                                |
+| 3     | Integration test + manual | `pnpm test`, open extension in debug host, check diagnostics                 |
+| 4     | Unit tests                | `cargo test` for all providers                                               |
+| 5     | Unit tests                | `cargo test` for code actions                                                |
+| 6     | WASM tests + manual       | Test in vscode.dev (if pursued)                                              |
+| 8     | Unit + integration tests  | `cargo test -p domainforge-mcp`, test MCP tools via agent, verify guardrails |
+| 9     | Manual                    | Install from VSIX, verify all features                                       |
 
 ---
 
@@ -501,6 +660,9 @@
 - [ ] **No Configuration Drift**: Client and server use identical config schema
 - [ ] **No Dead Code**: `cargo clippy` and `pnpm lint` enforced in CI
 - [ ] **No Undocumented Features**: README updated as features are added
+- [ ] **No Unsafe MCP Mutations**: All MCP tools that return edits require human approval
+- [ ] **No Path Traversal**: MCP server enforces workspace path allowlists strictly
+- [ ] **No Rate Limit Bypass**: Rate limiting tested under load to prevent abuse
 
 ---
 

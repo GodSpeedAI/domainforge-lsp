@@ -1,0 +1,43 @@
+// Valid SEA DSL example file for testing
+// This file should parse and validate without errors
+
+namespace "com.example.ecommerce"
+version "1.0.0"
+
+Entity "Customer" {
+    description: "A customer who can place orders"
+    
+    Property "id" of type UUID {
+        required: true
+    }
+    
+    Property "name" of type String {
+        required: true
+        minLength: 1
+        maxLength: 100
+    }
+    
+    Property "email" of type String {
+        required: true
+        pattern: "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
+    }
+}
+
+Entity "Order" {
+    description: "A customer order"
+    
+    Property "id" of type UUID {
+        required: true
+    }
+    
+    Property "total" of type Decimal {
+        required: true
+        minimum: 0
+    }
+}
+
+Relationship "places" {
+    from Entity "Customer"
+    to Entity "Order"
+    cardinality: one_to_many
+}

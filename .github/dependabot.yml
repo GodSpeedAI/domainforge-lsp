@@ -1,0 +1,42 @@
+version: 2
+
+registries:
+  crates-io:
+    type: cargo-registry
+    index: https://index.crates.io
+    replaces-base: true
+
+updates:
+  # Cargo dependencies
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      # Group minor and patch updates to reduce PR noise
+      rust-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+    commit-message:
+      prefix: "deps(rust)"
+    labels:
+      - dependencies
+      - rust
+
+  # GitHub Actions
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "ci"
+    labels:
+      - dependencies
+      - github-actions

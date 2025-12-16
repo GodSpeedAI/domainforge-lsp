@@ -1,0 +1,40 @@
+name: Security Audit
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+  schedule:
+    # Run weekly on Monday at 00:00 UTC
+    - cron: '0 0 * * 1'
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  audit:
+    name: Cargo Audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: domainforge-lsp
+
+      - name: Checkout DomainForge (sea-core)
+        uses: actions/checkout@v4
+        with:
+          repository: GodSpeedAI/DomainForge
+          ref: v0.4.0
+          path: domainforge
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Run cargo audit
+        uses: rustsec/audit-check@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true  # Advisory, not blocking

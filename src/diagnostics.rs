@@ -25,7 +25,7 @@ pub fn parse_error_to_diagnostic(error: &ParseError) -> Diagnostic {
         } => {
             // For syntax errors, we have precise location info
             // Mark a small range at the error position (10 characters)
-            let range = sea_range_to_lsp_range(*line, *column, *line, column + 10);
+            let range = sea_range_to_lsp_range(*line, *column, *line, *column + 10);
             error_diagnostic(range, message.clone(), "E005".to_string())
         }
         ParseError::UndefinedEntity(name) => {

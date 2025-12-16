@@ -9,9 +9,9 @@ use tower_lsp::lsp_types::*;
 ///
 /// Currently declares:
 /// - Text document sync (open/change/close)
+/// - Document formatting (Phase 2)
 ///
 /// Future phases will add:
-/// - Document formatting
 /// - Completion
 /// - Hover
 /// - Go to definition
@@ -27,8 +27,9 @@ pub fn server_capabilities() -> ServerCapabilities {
                 ..Default::default()
             },
         )),
+        // Document formatting (Phase 2)
+        document_formatting_provider: Some(OneOf::Left(true)),
         // Placeholder for future capabilities
-        // formatting_provider: Some(OneOf::Left(true)),
         // completion_provider: Some(CompletionOptions::default()),
         // hover_provider: Some(HoverProviderCapability::Simple(true)),
         // definition_provider: Some(OneOf::Left(true)),

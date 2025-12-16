@@ -24,10 +24,11 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: GodSpeedAI/DomainForge
+          ref: v0.4.0
           path: domainforge
 
       - name: Setup Rust
-        uses: dtolnay/rust-action@stable
+        uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
 
@@ -35,12 +36,11 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            ~/.cargo/bin/
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             domainforge-lsp/target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-${{ hashFiles('domainforge-lsp/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-
 
@@ -65,21 +65,21 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: GodSpeedAI/DomainForge
+          ref: v0.4.0
           path: domainforge
 
       - name: Setup Rust
-        uses: dtolnay/rust-action@stable
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Cache Cargo
         uses: actions/cache@v4
         with:
           path: |
-            ~/.cargo/bin/
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             domainforge-lsp/target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-${{ hashFiles('domainforge-lsp/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-
 
@@ -100,21 +100,21 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: GodSpeedAI/DomainForge
+          ref: v0.4.0
           path: domainforge
 
       - name: Setup Rust
-        uses: dtolnay/rust-action@stable
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Cache Cargo
         uses: actions/cache@v4
         with:
           path: |
-            ~/.cargo/bin/
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             domainforge-lsp/target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-${{ hashFiles('domainforge-lsp/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-
 

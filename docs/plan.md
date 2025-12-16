@@ -103,60 +103,60 @@
 
 ### 1.1 Tower-LSP Scaffold
 
-- [ ] **Backend Struct Implementation**
+- [x] **Backend Struct Implementation**
 
-  - [ ] Define `Backend` struct with `RwLock<HashMap<Url, String>>` for document storage
-  - [ ] Implement `tower_lsp::LanguageServer` trait for `Backend`
-  - [ ] Implement `initialize` with capability declaration
-  - [ ] Implement `initialized` with logging
-  - [ ] Implement `shutdown`
+  - [x] Define `Backend` struct with `RwLock<HashMap<Url, String>>` for document storage
+  - [x] Implement `tower_lsp::LanguageServer` trait for `Backend`
+  - [x] Implement `initialize` with capability declaration
+  - [x] Implement `initialized` with logging
+  - [x] Implement `shutdown`
 
-- [ ] **Text Document Sync**
+- [x] **Text Document Sync**
 
-  - [ ] Implement `textDocument/didOpen` — store full content
-  - [ ] Implement `textDocument/didChange` — apply incremental changes
-  - [ ] Implement `textDocument/didClose` — remove from storage
-  - [ ] Implement `textDocument/didSave` — trigger validation
+  - [x] Implement `textDocument/didOpen` — store full content
+  - [x] Implement `textDocument/didChange` — apply incremental changes
+  - [x] Implement `textDocument/didClose` — remove from storage
+  - [x] Implement `textDocument/didSave` — trigger validation
 
-- [ ] **Server Entry Point**
-  - [ ] Configure `tokio` runtime in `main.rs`
-  - [ ] Create `tower_lsp::Server` with stdio transport
-  - [ ] Wire `Backend` to server
-  - [ ] Add startup logging to stderr
+- [x] **Server Entry Point**
+  - [x] Configure `tokio` runtime in `main.rs`
+  - [x] Create `tower_lsp::Server` with stdio transport
+  - [x] Wire `Backend` to server
+  - [x] Add startup logging to stderr
 
 ### 1.2 Diagnostics Integration
 
-- [ ] **Validation Pipeline**
+- [x] **Validation Pipeline**
 
-  - [ ] On open/change/save: call `sea_core::parser::parse_to_graph`
-  - [ ] Capture `ParseResult` errors
-  - [ ] If additional validation exists, call `sea_core` validation
+  - [x] On open/change/save: call `sea_core::parser::parse_to_graph`
+  - [x] Capture `ParseResult` errors
+  - [x] If additional validation exists, call `sea_core` validation
 
-- [ ] **Diagnostic Mapping**
+- [x] **Diagnostic Mapping**
 
-  - [ ] Create `fn validation_error_to_diagnostic(e: &ValidationError) -> lsp::Diagnostic`
-  - [ ] Map `sea_core::validation_error::SourceRange` → `lsp::Range` (subtract 1 for 0-indexing)
-  - [ ] Map `ErrorCode` → `diagnostic.code`
-  - [ ] Map error message → `diagnostic.message`
-  - [ ] Map severity appropriately (Error/Warning/Info/Hint)
+  - [x] Create `fn parse_error_to_diagnostic(e: &ParseError) -> lsp::Diagnostic`
+  - [x] Map `sea_core::validation_error::SourceRange` → `lsp::Range` (subtract 1 for 0-indexing)
+  - [x] Map `ErrorCode` → `diagnostic.code`
+  - [x] Map error message → `diagnostic.message`
+  - [x] Map severity appropriately (Error/Warning/Info/Hint)
 
-- [ ] **Publish Diagnostics**
-  - [ ] Call `client.publish_diagnostics(uri, diagnostics, version)` after validation
-  - [ ] Clear diagnostics when document closes
+- [x] **Publish Diagnostics**
+  - [x] Call `client.publish_diagnostics(uri, diagnostics, version)` after validation
+  - [x] Clear diagnostics when document closes
 
 ### 1.3 Unit Tests for Phase 1
 
-- [ ] **Test Document Storage**
+- [x] **Test Document Storage**
 
-  - [ ] Test `didOpen` stores content correctly
-  - [ ] Test `didChange` applies incremental edits
-  - [ ] Test `didClose` removes content
+  - [x] Test `didOpen` stores content correctly
+  - [x] Test `didChange` applies incremental edits
+  - [x] Test `didClose` removes content
 
-- [ ] **Test Diagnostic Mapping**
-  - [ ] Test valid `.sea` produces empty diagnostics
-  - [ ] Test syntax error produces E003 diagnostic
-  - [ ] Test undefined entity produces E001 diagnostic
-  - [ ] Test range conversion is correct (1-based → 0-based)
+- [x] **Test Diagnostic Mapping**
+  - [x] Test valid `.sea` produces empty diagnostics
+  - [x] Test syntax error produces E005 diagnostic
+  - [x] Test undefined entity produces E001 diagnostic
+  - [x] Test range conversion is correct (1-based → 0-based)
 
 ---
 

@@ -5,10 +5,13 @@
 
 use std::collections::HashMap;
 
+use sea_core::parse_to_graph;
 use tokio::sync::RwLock;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer};
+
+use crate::diagnostics::parse_error_to_diagnostic;
 
 /// The Backend struct holds server state.
 ///
@@ -32,15 +35,26 @@ impl Backend {
     }
 
     /// Validate a document and publish diagnostics.
-    /// This will be enhanced in Phase 1 to call sea-core validation.
-    async fn validate_document(&self, uri: Url, _text: &str) {
-        // Placeholder: In Phase 1, this will:
-        // 1. Parse with sea_core::parser::parse_to_graph
-        // 2. Convert errors to diagnostics using crate::diagnostics
-        // 3. Publish diagnostics
+    ///
+    /// Parses the document using sea-core and converts any parse errors
+    /// into LSP diagnostics that are published to the client.
+    async fn validate_document(&self, uri: Url, text: &str) {
+        let diagnostics = match parse_to_graph(text) {
+            Ok(_graph) => {
+                // Parse succeeded - no diagnostics
+                log::debug!("Document validated successfully: {}", uri);
+                vec![]
+            }
+            Err(parse_error) => {
+                // Parse failed - convert error to diagnostic
+                log::debug!("Parse error in {}: {:?}", uri, parse_error);
+                vec![parse_error_to_diagnostic(&parse_error)]
+            }
+        };
 
-        // For now, just clear any existing diagnostics
-        self.client.publish_diagnostics(uri, vec![], None).await;
+        self.client
+            .publish_diagnostics(uri, diagnostics, None)
+            .await;
     }
 }
 
@@ -113,5 +127,29 @@ impl LanguageServer for Backend {
 
         // Clear diagnostics for the closed document
         self.client.publish_diagnostics(uri, vec![], None).await;
+    }
+
+    async fn did_save(&self, params: DidSaveTextDocumentParams) {
+        let uri = params.text_document.uri;
+
+        log::info!("Document saved: {}", uri);
+
+        // Get the document content from storage (or from params if provided)
+        let text = if let Some(text) = params.text {
+            text
+        } else {
+            // Fetch from stored documents
+            let documents = self.documents.read().await;
+            match documents.get(&uri) {
+                Some(content) => content.clone(),
+                None => {
+                    log::warn!("Document not found in storage: {}", uri);
+                    return;
+                }
+            }
+        };
+
+        // Re-validate on save
+        self.validate_document(uri, &text).await;
     }
 }

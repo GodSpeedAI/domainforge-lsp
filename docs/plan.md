@@ -12,88 +12,88 @@
 
 ### 0.1 LSP Server Repository (`domainforge-lsp`)
 
-- [ ] **Cargo.toml Configuration**
+- [x] **Cargo.toml Configuration**
 
-  - [ ] Add `sea-core` path dependency: `sea-core = { path = "../domainforge/sea-core" }`
-  - [ ] Add `tower-lsp` dependency with latest version
-  - [ ] Add `tokio` with `full` features
-  - [ ] Add `serde` and `serde_json` for JSON-RPC
-  - [ ] Configure binary target: `[[bin]] name = "domainforge-lsp"`
-  - [ ] Set edition, version, and metadata fields
+  - [x] Add `sea-core` path dependency: `sea-core = { path = "../domainforge/sea-core" }`
+  - [x] Add `tower-lsp` dependency with latest version
+  - [x] Add `tokio` with `full` features
+  - [x] Add `serde` and `serde_json` for JSON-RPC
+  - [x] Configure binary target: `[[bin]] name = "domainforge-lsp"`
+  - [x] Set edition, version, and metadata fields
 
-- [ ] **Project Structure**
+- [x] **Project Structure**
 
-  - [ ] Create `src/main.rs` with minimal entry point stub
-  - [ ] Create `src/backend.rs` for `Backend` struct placeholder
-  - [ ] Create `src/capabilities.rs` for capability declarations
-  - [ ] Create `src/diagnostics.rs` for diagnostic mapping utilities
-  - [ ] Create `src/formatting.rs` for format handler
+  - [x] Create `src/main.rs` with minimal entry point stub
+  - [x] Create `src/backend.rs` for `Backend` struct placeholder
+  - [x] Create `src/capabilities.rs` for capability declarations
+  - [x] Create `src/diagnostics.rs` for diagnostic mapping utilities
+  - [x] Create `src/formatting.rs` for format handler
 
-- [ ] **Testing Infrastructure**
-  - [ ] Create `tests/` directory
-  - [ ] Create `tests/integration.rs` for integration test harness
-  - [ ] Add test fixtures directory: `tests/fixtures/` with sample `.sea` files
-  - [ ] Verify `cargo test -p domainforge-lsp` runs (even if empty)
+- [x] **Testing Infrastructure**
+  - [x] Create `tests/` directory
+  - [x] Create `tests/integration.rs` for integration test harness
+  - [x] Add test fixtures directory: `tests/fixtures/` with sample `.sea` files
+  - [x] Verify `cargo test -p domainforge-lsp` runs (even if empty)
 
 ### 0.2 VS Code Extension Repository (`domainforge-vsc-extension`)
 
-- [ ] **package.json Completion**
+- [x] **package.json Completion**
 
-  - [ ] Add `contributes.languages` for `domainforge` language ID
-  - [ ] Add `contributes.grammars` for `.sea` file association
-  - [ ] Add `activationEvents` for `.sea` files
-  - [ ] Add `contributes.configuration` schema matching spec section 8
-  - [ ] Add development dependencies: `@types/vscode`, `esbuild`, `typescript`
-  - [ ] Add runtime dependency: `vscode-languageclient`
+  - [x] Add `contributes.languages` for `domainforge` language ID
+  - [x] Add `contributes.grammars` for `.sea` file association
+  - [x] Add `activationEvents` for `.sea` files
+  - [x] Add `contributes.configuration` schema matching spec section 8
+  - [x] Add development dependencies: `@types/vscode`, `esbuild`, `typescript`
+  - [x] Add runtime dependency: `vscode-languageclient`
 
-- [ ] **Build Configuration**
+- [x] **Build Configuration**
 
-  - [ ] Verify/update `esbuild.js` for production bundling
-  - [ ] Configure `tsconfig.json` with strict settings
-  - [ ] Add `pnpm run compile` script
-  - [ ] Add `pnpm run watch` script for development
-  - [ ] Add `pnpm run package` script for VSIX creation
+  - [x] Verify/update `esbuild.js` for production bundling
+  - [x] Configure `tsconfig.json` with strict settings
+  - [x] Add `pnpm run compile` script
+  - [x] Add `pnpm run watch` script for development
+  - [x] Add `pnpm run package` script for VSIX creation
 
-- [ ] **Testing Infrastructure**
-  - [ ] Create `.vscode-test.mjs` configuration
-  - [ ] Create `src/test/` directory structure
-  - [ ] Add `pnpm test` script
-  - [ ] Verify test runner executes (even if empty)
+- [x] **Testing Infrastructure**
+  - [x] Create `.vscode-test.mjs` configuration
+  - [x] Create `src/test/` directory structure
+  - [x] Add `pnpm test` script
+  - [x] Verify test runner executes (even if empty)
 
 ### 0.3 CI/CD Pipeline
 
-- [ ] **LSP Server CI** (`domainforge-lsp/.github/workflows/ci.yml`)
+- [x] **LSP Server CI** (`domainforge-lsp/.github/workflows/ci.yml`)
 
-  - [ ] Lint step: `cargo fmt --check && cargo clippy -- -D warnings`
-  - [ ] Test step: `cargo test -p domainforge-lsp`
-  - [ ] Build step: `cargo build --release -p domainforge-lsp`
-  - [ ] Cache Cargo dependencies for faster builds
-  - [ ] Run on push to `main` and all PRs
+  - [x] Lint step: `cargo fmt --check && cargo clippy -- -D warnings`
+  - [x] Test step: `cargo test -p domainforge-lsp`
+  - [x] Build step: `cargo build --release -p domainforge-lsp`
+  - [x] Cache Cargo dependencies for faster builds
+  - [x] Run on push to `main` and all PRs
 
-- [ ] **Extension Client CI** (`domainforge-vsc-extension/.github/workflows/ci.yml`)
+- [x] **Extension Client CI** (`domainforge-vsc-extension/.github/workflows/ci.yml`)
 
-  - [ ] Lint step: `pnpm lint`
-  - [ ] Build step: `pnpm run compile`
-  - [ ] Test step: `pnpm test`
-  - [ ] Cache `node_modules`
-  - [ ] Run on push to `main` and all PRs
+  - [x] Lint step: `pnpm lint`
+  - [x] Build step: `pnpm run compile`
+  - [x] Test step: `pnpm test`
+  - [x] Cache `node_modules`
+  - [x] Run on push to `main` and all PRs
 
-- [ ] **Cross-Compilation Pipeline** (`domainforge-lsp/.github/workflows/release.yml`)
+- [x] **Cross-Compilation Pipeline** (`domainforge-lsp/.github/workflows/release.yml`)
 
-  - [ ] Build matrix for targets:
-    - [ ] `x86_64-unknown-linux-gnu`
-    - [ ] `x86_64-pc-windows-msvc`
-    - [ ] `x86_64-apple-darwin`
-    - [ ] `aarch64-apple-darwin`
-  - [ ] Upload artifacts per platform
-  - [ ] Trigger on version tags (`v*.*.*`)
+  - [x] Build matrix for targets:
+    - [x] `x86_64-unknown-linux-gnu`
+    - [x] `x86_64-pc-windows-msvc`
+    - [x] `x86_64-apple-darwin`
+    - [x] `aarch64-apple-darwin`
+  - [x] Upload artifacts per platform
+  - [x] Trigger on version tags (`v*.*.*`)
 
-- [ ] **VSIX Packaging Pipeline** (`domainforge-vsc-extension/.github/workflows/release.yml`)
-  - [ ] Download platform binaries from LSP release
-  - [ ] Bundle binaries into extension
-  - [ ] Run `vsce package`
-  - [ ] Upload VSIX artifact
-  - [ ] Trigger on version tags
+- [x] **VSIX Packaging Pipeline** (`domainforge-vsc-extension/.github/workflows/release.yml`)
+  - [x] Download platform binaries from LSP release
+  - [x] Bundle binaries into extension
+  - [x] Run `vsce package`
+  - [x] Upload VSIX artifact
+  - [x] Trigger on version tags
 
 ---
 

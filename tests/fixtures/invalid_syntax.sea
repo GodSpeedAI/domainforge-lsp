@@ -1,0 +1,19 @@
+// Invalid SEA DSL example file for testing diagnostics
+// This file contains intentional syntax errors
+
+namespace "com.example.test"
+version "1.0.0"
+
+// Missing closing brace
+Entity "Broken" {
+    Property "name" of type String
+
+// Missing keyword
+"UnfinishedEntity" {
+    Property "id" of type UUID
+}
+
+// Invalid property definition
+Entity "Another" {
+    Property missing_quotes of type String
+}

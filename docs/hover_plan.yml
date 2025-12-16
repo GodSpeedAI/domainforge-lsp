@@ -1,0 +1,598 @@
+spec_version: "1.0"
+feature: "DomanForge DSL Hover (Ultimate)"
+target_clients:
+  - vscode_extension
+  - lsp_clients_generic
+  - mcp_or_agents_optional
+
+goals:
+  primary:
+    - "Answer 'what is this?' and 'how is it interpreted here?' within one hover view"
+    - "Provide authoritative semantic facts (no guessing)"
+    - "Support both human-readable hover and machine-consumable hover data without duplication"
+  quality:
+    - "Deterministic output for same (uri, version, position)"
+    - "Bounded payload and latency; graceful degradation under budget"
+    - "No technical debt: single canonical hover model; renderers are pure functions"
+
+non_goals:
+  - "Custom UI buttons inside hover widget"
+  - "Network access during hover computation"
+  - "Full-project recomputation triggered by hover"
+
+architecture:
+  canonical_hover_model:
+    description: "Single structured model produced by the Rust language server; all views derived from it."
+    source_of_truth: "Rust LSP server semantic engine"
+    renderers:
+      markdown_renderer: "Pure function: HoverModel -> MarkdownString content"
+      json_renderer: "Pure function: HoverModel -> HoverPlusResponse (JSON)"
+  endpoints:
+    standard_lsp_hover:
+      method: "textDocument/hover"
+      transport: "LSP JSON-RPC"
+      returns:
+        kind: "MarkupContent"
+        formats_supported:
+          - "markdown"
+          - "plaintext (fallback)"
+      content_source: "Rendered from canonical_hover_model"
+    hover_plus:
+      method: "textDocument/hoverPlus"
+      transport: "LSP JSON-RPC (custom method)"
+      returns:
+        kind: "JSON"
+        content_source: "canonical_hover_model + optional rendered markdown"
+      purpose:
+        - "Machine-parseable semantics for agents and rich clients"
+        - "Avoid markdown scraping"
+        - "Enable progressive disclosure without bloating standard hover"
+
+safety_privacy:
+  policy:
+    workspace_scope_only: true
+    no_network: true
+    no_secrets: true
+    no_personal_identifiers_default: true
+  redaction:
+    enabled: true
+    patterns:
+      - name: "api_keys_tokens"
+        examples: ["AKIA...", "ghp_", "xoxb-", "Bearer "]
+        action: "mask"
+      - name: "absolute_paths_outside_workspace"
+        action: "strip_or_relativize"
+  trust:
+    markdown_is_trusted_commands: false
+    rationale: "Avoid command URI execution from hover content"
+
+performance:
+  targets:
+    warm_latency_p50_ms: 100
+    warm_latency_p95_ms: 250
+    cold_latency_p95_ms: 500
+  compute_budget:
+    cpu_budget_ms: 40
+    behavior_on_budget_exceed:
+      - "Return header + signature/type + summary"
+      - "Mark deeper sections unavailable with reason: budget_exceeded"
+  caching:
+    keys:
+      - uri
+      - document_version
+      - position
+      - resolve_id
+      - view_kind  # markdown/json
+    strategy:
+      - "Cache HoverModel (primary)"
+      - "Cache rendered markdown (secondary)"
+    eviction: "LRU"
+    max_entries:
+      hover_models: 512
+      rendered_markdown: 256
+
+payload_limits:
+  markdown:
+    max_bytes: 32768
+    max_code_blocks: 2
+    max_code_block_lines: 40
+    max_related_items: 5
+    max_pitfalls: 3
+    truncation_marker: "… truncated ({{remaining}} more lines). Use hoverPlus for full detail."
+  json:
+    max_bytes: 131072
+    max_array_items_default: 50
+    truncation_fields:
+      - "limits.truncated_sections"
+      - "limits.original_sizes"
+
+determinism:
+  definition: "Same snapshot => byte-identical HoverModel (excluding timing fields)."
+  snapshot_identity:
+    - "document.uri"
+    - "document.version"
+    - "position"
+    - "workspace_root_id"
+    - "config_hash"
+  disallowed_nondeterminism:
+    - "timestamps in content"
+    - "random ordering of lists"
+    - "filesystem iteration without sorting"
+  ordering_rules:
+    lists_sorted_by:
+      related_symbols: "relevance_score desc, then qualified_name asc"
+      diagnostics: "severity desc, then range.start asc"
+      constraints: "stable canonical string asc"
+
+cognitive_ergonomics:
+  layout_rules:
+    - "Facts first; prose second"
+    - "First screen answers within ~12 lines where possible"
+    - "Progressive disclosure: detail sections are collapsible by heading boundaries"
+    - "Consistent headings across all hovers"
+  formatting:
+    - "Prefer labeled fields and bullets over paragraphs"
+    - "Avoid repeating signature in multiple sections"
+    - "Use short, neutral summaries (1-3 lines)"
+  error_hover_rules:
+    - "Show failing constraint before fix suggestions"
+    - "Show top 1-3 code actions only; never auto-apply"
+
+dsl_adaptation:
+  required_symbol_kinds:
+    - "Module"
+    - "Rule"
+    - "Selector"
+    - "Binding"
+    - "Attribute"
+    - "Pipe"
+    - "Function"
+    - "Type"
+    - "Unit"
+    - "Constant"
+    - "MacroOrTemplate"
+    - "Reference"
+    - "Literal"
+  required_semantics:
+    - "Qualified identity: module path + symbol name"
+    - "Interpretation at position: resolved target + context (scope, environment)"
+    - "Shape/Type system: input/output shape; optionality/nullability; unit/dimension if applicable"
+    - "Normalization/expansion preview: canonical AST or normalized DSL snippet (bounded)"
+    - "Common pitfalls: max 3, context-specific if available"
+    - "Related constructs: max 5, relevance-ranked"
+
+hover_model:
+  type: "HoverModel"
+  required_fields:
+    - schema_version
+    - id
+    - symbol
+    - context
+    - primary
+    - limits
+  fields:
+    schema_version:
+      type: "string"
+      example: "1.0"
+    id:
+      type: "string"
+      description: "Stable hover id for caching/debug; deterministic hash over snapshot + resolved symbol."
+    symbol:
+      type: "object"
+      required:
+        - name
+        - kind
+        - qualified_name
+        - uri
+        - range
+        - resolve_id
+        - resolution_confidence
+      properties:
+        name: { type: "string" }
+        kind:
+          type: "string"
+          enum_ref: "dsl_adaptation.required_symbol_kinds"
+        qualified_name: { type: "string" }
+        uri: { type: "string" }
+        range:
+          type: "object"
+          required: [start, end]
+          properties:
+            start: { $ref: "#/types/position" }
+            end: { $ref: "#/types/position" }
+        resolve_id:
+          type: "string"
+          description: "Stable internal symbol id (e.g., interned id, symbol table key)."
+        resolution_confidence:
+          type: "string"
+          enum: ["exact", "ambiguous", "error_fallback"]
+    context:
+      type: "object"
+      required:
+        - document_version
+        - position
+        - scope_summary
+        - config_hash
+      properties:
+        document_version: { type: "integer" }
+        position: { $ref: "#/types/position" }
+        scope_summary:
+          type: "object"
+          properties:
+            module: { type: "string" }
+            enclosing_rule: { type: "string" }
+            namespaces_in_scope: { type: "array", items: { type: "string" } }
+            bindings_in_scope:
+              type: "array"
+              items:
+                type: "object"
+                properties:
+                  name: { type: "string" }
+                  shape: { type: "string" }
+        config_hash: { type: "string" }
+    primary:
+      type: "object"
+      required:
+        - header
+        - signature_or_shape
+        - summary
+      properties:
+        header:
+          type: "object"
+          properties:
+            display_name: { type: "string" }
+            kind_label: { type: "string" }
+            qualified_path: { type: "string" }
+        signature_or_shape:
+          type: "object"
+          description: "Exactly one of callable_signature, type_shape, or expression_type."
+          oneOf:
+            - $ref: "#/types/callable_signature"
+            - $ref: "#/types/type_shape"
+            - $ref: "#/types/expression_type"
+        summary:
+          type: "object"
+          properties:
+            text:
+              type: "string"
+              max_lines: 3
+            source:
+              type: "string"
+              enum: ["docs", "synthesized", "none"]
+        badges:
+          type: "array"
+          items:
+            type: "object"
+            properties:
+              kind:
+                type: "string"
+                enum: ["deprecated", "since", "visibility", "stability", "unsafe", "effects", "thread_safety"]
+              label: { type: "string" }
+              detail: { type: "string" }
+    diagnostics:
+      type: "object"
+      optional: true
+      properties:
+        items:
+          type: "array"
+          items:
+            type: "object"
+            required: [severity, message, range]
+            properties:
+              severity: { type: "string", enum: ["error", "warning", "info", "hint"] }
+              message: { type: "string" }
+              range: { $ref: "#/types/range" }
+              failing_constraint:
+                type: "string"
+                optional: true
+              notes:
+                type: "array"
+                items: { type: "string" }
+        fixes:
+          type: "array"
+          description: "Top 1-3 fix intents; references codeAction ids."
+          max_items: 3
+          items:
+            type: "object"
+            properties:
+              title: { type: "string" }
+              kind: { type: "string" }
+              code_action_id: { type: "string" }
+    resolution:
+      type: "object"
+      optional: true
+      properties:
+        chosen:
+          type: "object"
+          properties:
+            overload_or_rule: { type: "string" }
+            impl_or_binding: { type: "string" }
+        evidence:
+          type: "array"
+          max_items: 10
+          items:
+            type: "object"
+            properties:
+              label: { type: "string" }
+              detail: { type: "string" }
+    expansion:
+      type: "object"
+      optional: true
+      properties:
+        normalized_form:
+          type: "string"
+          description: "Bounded canonical DSL or AST snippet."
+        macro_expansion:
+          type: "string"
+          optional: true
+        truncated:
+          type: "boolean"
+          default: false
+    usage:
+      type: "object"
+      optional: true
+      properties:
+        example:
+          type: "string"
+          optional: true
+          constraints:
+            max_lines: 25
+        pitfalls:
+          type: "array"
+          max_items: 3
+          items: { type: "string" }
+        related:
+          type: "array"
+          max_items: 5
+          items:
+            type: "object"
+            properties:
+              qualified_name: { type: "string" }
+              kind: { type: "string" }
+              why: { type: "string" }
+    project_signals:
+      type: "object"
+      optional: true
+      gated_by_policy: true
+      properties:
+        usage_count: { type: "integer" }
+        coverage_percent: { type: "number" }
+        hotspot: { type: "boolean" }
+        freshness_bucket:
+          type: "string"
+          enum: ["recent", "active", "stale", "unknown"]
+        owner_team: { type: "string" }
+    limits:
+      type: "object"
+      required: [truncated_sections, original_sizes]
+      properties:
+        truncated_sections:
+          type: "array"
+          items: { type: "string" }
+        original_sizes:
+          type: "object"
+          properties:
+            markdown_bytes: { type: "integer" }
+            json_bytes: { type: "integer" }
+
+types:
+  position:
+    type: "object"
+    required: [line, character]
+    properties:
+      line: { type: "integer", min: 0 }
+      character: { type: "integer", min: 0 }
+  range:
+    type: "object"
+    required: [start, end]
+    properties:
+      start: { $ref: "#/types/position" }
+      end: { $ref: "#/types/position" }
+  callable_signature:
+    type: "object"
+    properties:
+      display: { type: "string" }
+      params:
+        type: "array"
+        items:
+          type: "object"
+          properties:
+            name: { type: "string" }
+            type: { type: "string" }
+            doc: { type: "string" }
+            optional: { type: "boolean" }
+      returns: { type: "string" }
+      generics: { type: "array", items: { type: "string" } }
+      constraints: { type: "array", items: { type: "string" } }
+      effects: { type: "array", items: { type: "string" } }
+  type_shape:
+    type: "object"
+    properties:
+      display: { type: "string" }
+      fields:
+        type: "array"
+        items:
+          type: "object"
+          properties:
+            name: { type: "string" }
+            shape: { type: "string" }
+            doc: { type: "string" }
+      variants:
+        type: "array"
+        items:
+          type: "object"
+          properties:
+            name: { type: "string" }
+            doc: { type: "string" }
+      unit: { type: "string" }
+      constraints: { type: "array", items: { type: "string" } }
+  expression_type:
+    type: "object"
+    properties:
+      inferred_type: { type: "string" }
+      nullability: { type: "string", enum: ["non_null", "nullable", "unknown"] }
+      mutability: { type: "string", enum: ["immutable", "mutable", "unknown"] }
+      ownership_flags:
+        type: "array"
+        items: { type: "string" }
+
+standard_hover_markdown:
+  source: "Rendered from HoverModel"
+  required_headings_order:
+    - "Signature"
+    - "Summary"
+    - "Facts"
+    - "Diagnostics"
+    - "Resolution"
+    - "Expansion"
+    - "Usage"
+    - "Related"
+  module_rules:
+    Signature:
+      content:
+        - "Code block: signature_or_shape display"
+        - "If params exist: bullet list param: type — short doc (optional)"
+    Summary:
+      content:
+        - "1-3 lines"
+    Facts:
+      content:
+        - "Badges as compact bullet list or inline chips-style text"
+    Diagnostics:
+      show_only_if: "diagnostics.items non-empty"
+      content:
+        - "Severity + message"
+        - "Failing constraint (if present)"
+        - "Top fixes as plain bullets (no command links)"
+    Resolution:
+      expandable: true
+      show_only_if: "resolution present"
+      content:
+        - "Chosen overload/rule + impl/binding"
+        - "Evidence bullets (max 10)"
+    Expansion:
+      expandable: true
+      show_only_if: "expansion present"
+      content:
+        - "Normalized form code block (bounded)"
+        - "Macro expansion code block (optional, bounded)"
+        - "Truncation note if expansion.truncated"
+    Usage:
+      expandable: true
+      show_only_if: "usage present"
+      content:
+        - "Example code block (optional)"
+        - "Pitfalls (max 3)"
+    Related:
+      expandable: true
+      show_only_if: "usage.related non-empty"
+      content:
+        - "List related symbols (max 5) with one-line why"
+
+hover_plus_api:
+  request:
+    method: "textDocument/hoverPlus"
+    params:
+      textDocument:
+        uri: "string"
+      position:
+        line: "int"
+        character: "int"
+      options:
+        type: "object"
+        optional: true
+        properties:
+          include_markdown:
+            type: "boolean"
+            default: false
+          include_project_signals:
+            type: "boolean"
+            default: false
+          max_detail_level:
+            type: "string"
+            enum: ["core", "standard", "deep"]
+            default: "standard"
+  response:
+    required:
+      - hover_model
+    properties:
+      hover_model:
+        $ref: "#/hover_model"
+      rendered_markdown:
+        type: "string"
+        optional: true
+      server_info:
+        type: "object"
+        optional: true
+        properties:
+          version: { type: "string" }
+          config_hash: { type: "string" }
+
+vscode_extension_integration:
+  default_path:
+    - "Use standard LSP hover for UI"
+    - "Use hoverPlus for agent/MCP features and for richer internal logic (optional)"
+  optional_enhancements:
+    - "On hover shown: prefetch hoverPlus(core) to enable instant 'deep' features elsewhere (e.g., peek panel)"
+    - "Expose command 'DomanForge: Copy Hover as JSON/Markdown' via command palette (not embedded in hover)"
+  compatibility:
+    - "Standard hover works in any LSP client"
+    - "hoverPlus only used by DomanForge VS Code extension or MCP clients"
+
+code_actions_linkage:
+  principle: "Hover only references code actions; actions requested via standard LSP codeAction."
+  identifiers:
+    code_action_id: "Stable id understood by server; maps to specific codeAction kind/title."
+  safety:
+    auto_apply: false
+
+testing:
+  golden_snapshots:
+    fixtures_required:
+      - "Rule reference resolution"
+      - "Ambiguous reference"
+      - "Selector with normalized form"
+      - "Binding in scope with shape"
+      - "Diagnostics: constraint failure + fixes"
+      - "Deprecated symbol + since metadata"
+      - "Macro/template expansion truncation"
+    assertions:
+      - "Heading order stable"
+      - "No duplicate signature"
+      - "Truncation markers present when limits exceeded"
+      - "Determinism: identical output for same snapshot"
+  property_tests:
+    - "Payload never exceeds limits"
+    - "Lists sorted deterministically"
+    - "No secrets leakage by redaction"
+  performance_tests:
+    repo_sizes:
+      - "small"
+      - "medium"
+      - "monorepo"
+    thresholds:
+      warm_p95_ms: 250
+      cold_p95_ms: 500
+
+implementation_notes:
+  rust_server:
+    required_components:
+      - "Parser -> AST"
+      - "Resolver (symbols, scopes, references)"
+      - "Type/shape inference (DSL-specific)"
+      - "Normalizer/expander (bounded output)"
+      - "HoverModel builder (deterministic, budgeted)"
+      - "Markdown renderer (pure)"
+      - "hoverPlus handler (custom method)"
+  configuration:
+    user_settings:
+      - name: "domanforge.hover.detailLevel"
+        type: "string"
+        enum: ["core", "standard", "deep"]
+        default: "standard"
+      - name: "domanforge.hover.projectSignals"
+        type: "boolean"
+        default: false
+      - name: "domanforge.hover.maxPayloadKb"
+        type: "number"
+        default: 32

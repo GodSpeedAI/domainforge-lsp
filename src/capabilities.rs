@@ -29,11 +29,14 @@ pub fn server_capabilities() -> ServerCapabilities {
         )),
         // Document formatting (Phase 2)
         document_formatting_provider: Some(OneOf::Left(true)),
-        // Placeholder for future capabilities
-        // completion_provider: Some(CompletionOptions::default()),
-        // hover_provider: Some(HoverProviderCapability::Simple(true)),
-        // definition_provider: Some(OneOf::Left(true)),
-        // references_provider: Some(OneOf::Left(true)),
+        completion_provider: Some(CompletionOptions {
+            resolve_provider: Some(false),
+            trigger_characters: Some(vec!["\"".to_string(), "@".to_string(), ".".to_string()]),
+            ..Default::default()
+        }),
+        hover_provider: Some(HoverProviderCapability::Simple(true)),
+        definition_provider: Some(OneOf::Left(true)),
+        references_provider: Some(OneOf::Left(true)),
         ..Default::default()
     }
 }

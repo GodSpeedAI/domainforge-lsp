@@ -211,37 +211,37 @@
 
 ### 3.1 Language Client Setup
 
-- [ ] **Extension Activation**
+- [x] **Extension Activation**
 
-  - [ ] Implement `activate` function in `extension.ts`
-  - [ ] Register `domainforge` language
-  - [ ] Register `.sea` file association
+  - [x] Implement `activate` function in `extension.ts`
+  - [x] Register `domainforge` language
+  - [x] Register `.sea` file association
 
-- [ ] **Server Process Spawn**
+- [x] **Server Process Spawn**
 
-  - [ ] Detect current platform (`linux`, `darwin`, `win32`, `darwin-arm64`)
-  - [ ] Locate bundled binary path based on platform
-  - [ ] Configure `ServerOptions` with executable path and stdio transport
-  - [ ] Handle missing binary gracefully with user notification
+  - [x] Detect current platform (`linux`, `darwin`, `win32`, `darwin-arm64`)
+  - [x] Locate bundled binary path based on platform
+  - [x] Configure `ServerOptions` with executable path and stdio transport
+  - [x] Handle missing binary gracefully with user notification
 
-- [ ] **Client Options**
+- [x] **Client Options**
 
-  - [ ] Configure `documentSelector` for `domainforge` language
-  - [ ] Configure `synchronize.configurationSection` for `domainforge`
-  - [ ] Enable `middleware` for debugging if needed
+  - [x] Configure `documentSelector` for `domainforge` language
+  - [x] Configure `synchronize.configurationSection` for `domainforge`
+  - [x] Enable `middleware` for debugging if needed
 
-- [ ] **Lifecycle Management**
-  - [ ] Start client on activation
-  - [ ] Implement `deactivate` to stop client cleanly
-  - [ ] Handle server crash with restart logic
+- [x] **Lifecycle Management**
+  - [x] Start client on activation
+  - [x] Implement `deactivate` to stop client cleanly
+  - [x] Handle server crash with restart logic
 
 ### 3.2 Manual Integration Testing
 
-- [ ] **Test Extension Loads**
+- [x] **Test Extension Loads**
 
-  - [ ] Open VS Code with extension installed
-  - [ ] Open a `.sea` file
-  - [ ] Verify status bar shows language as `DomainForge`
+  - [x] Open VS Code with extension installed
+  - [x] Open a `.sea` file
+  - [x] Verify status bar shows language as `DomainForge`
 
 - [ ] **Test Diagnostics Appear**
 
@@ -254,6 +254,8 @@
   - [ ] Execute `Format Document` command
   - [ ] Verify file is reformatted
 
+> **Test diagnostics appear and formatting works tests require the actual compiled LSP binary to be present in the bin/ directory, which happens during the full release process or by manually downloading artifacts.**
+
 ---
 
 ## Phase 4: Advanced Language Features
@@ -262,179 +264,181 @@
 
 ### 4.1 Completion Provider
 
-- [ ] **Capability Declaration**
+- [x] **Capability Declaration**
 
-  - [ ] Add `completionProvider` with triggerCharacters: `"`, `@`, `.`
+  - [x] Add `completionProvider` with triggerCharacters: `"`, `@`, `.`
 
-- [ ] **Implementation**
+- [x] **Implementation**
 
-  - [ ] Implement `textDocument/completion` handler
-  - [ ] Parse current document to get `Graph`
-  - [ ] Extract all entity names → completion items
-  - [ ] Extract all resource names → completion items
-  - [ ] Extract namespace prefixes from imports → completion items
-  - [ ] Set appropriate `CompletionItemKind` for each type
+  - [x] Implement `textDocument/completion` handler
+  - [x] Parse current document to get `Graph`
+  - [x] Extract all entity names → completion items
+  - [x] Extract all resource names → completion items
+  - [x] Extract namespace prefixes from imports → completion items
+  - [x] Set appropriate `CompletionItemKind` for each type
 
-- [ ] **Context-Aware Completion**
-  - [ ] After `of "` suggest entity names
-  - [ ] After `from "` or `to "` suggest entity names
-  - [ ] After `Flow "` suggest resource names
+- [x] **Context-Aware Completion**
+  - [x] After `of "` suggest entity names
+  - [x] After `from "` or `to "` suggest entity names
+  - [x] After `Flow "` suggest resource names
 
 ### 4.2 Hover Provider
 
 > **Architecture**: Implement the canonical hover model from `hover_plan.yml` with dual endpoints for human and machine consumption.
 
-- [ ] **State Management**
+- [x] **State Management**
 
-  - [ ] Refactor `Backend` to cache `Graph` per document (see Phase 4.2.1)
-  - [ ] Add `DocumentState` struct with `text`, `version`, and `graph` fields
-  - [ ] Update all document sync handlers to maintain cached graph
-  - [ ] Implement cache invalidation on document changes
+  - [x] Refactor `Backend` to cache `Graph` per document (see Phase 4.2.1)
+  - [x] Add `DocumentState` struct with `text`, `version`, and `graph` fields
+  - [x] Update all document sync handlers to maintain cached graph
+  - [x] Implement cache invalidation on document changes
 
-- [ ] **Canonical Hover Model**
+- [x] **Canonical Hover Model**
 
-  - [ ] Create `src/hover/mod.rs` module
-  - [ ] Define `HoverModel` struct matching `hover_plan.yml` schema
-  - [ ] Implement required fields: `schema_version`, `id`, `symbol`, `context`, `primary`, `limits`
-  - [ ] Implement `symbol` resolution: name, kind, qualified_name, uri, range, resolve_id
-  - [ ] Implement `context` extraction: document_version, position, scope_summary, config_hash
-  - [ ] Implement `primary` section: header, signature_or_shape, summary, badges
+  - [x] Create `src/hover/mod.rs` module
+  - [x] Define `HoverModel` struct matching `hover_plan.yml` schema
+  - [x] Implement required fields: `schema_version`, `id`, `symbol`, `context`, `primary`, `limits`
+  - [x] Implement `symbol` resolution: name, kind, qualified_name, uri, range, resolve_id
+  - [x] Implement `context` extraction: document_version, position, scope_summary, config_hash
+  - [x] Implement `primary` section: header, signature_or_shape, summary, badges
 
-- [ ] **DSL Adaptation Layer**
+- [x] **DSL Adaptation Layer**
 
-  - [ ] Create `src/hover/symbol_resolver.rs`
-  - [ ] Implement position-to-symbol lookup in `Graph`
-  - [ ] Support symbol kinds: Entity, Resource, Flow, Instance, Role, Relation, Pattern
-  - [ ] Build qualified identity: module path + symbol name
-  - [ ] Extract interpretation context: resolved target, scope, environment
-  - [ ] Implement shape/type extraction from DSL primitives
+  - [x] Create `src/hover/symbol_resolver.rs`
+  - [x] Implement position-to-symbol lookup in `Graph`
+  - [x] Support symbol kinds: Entity, Resource, Flow, Instance, Role, Relation, Pattern
+  - [x] Build qualified identity: module path + symbol name
+  - [x] Extract interpretation context: resolved target, scope, environment
+  - [x] Implement shape/type extraction from DSL primitives
 
-- [ ] **Standard LSP Hover Endpoint**
+- [x] **Standard LSP Hover Endpoint**
 
-  - [ ] Add `hoverProvider: true` to server capabilities
-  - [ ] Implement `textDocument/hover` handler
-  - [ ] Build `HoverModel` from cursor position
-  - [ ] Render `HoverModel` to Markdown via pure function
-  - [ ] Return `MarkupContent` with markdown format
-  - [ ] Implement payload limits: max 32KB, max 2 code blocks, max 40 lines per block
-  - [ ] Add truncation markers when limits exceeded
+  - [x] Add `hoverProvider: true` to server capabilities
+  - [x] Implement `textDocument/hover` handler
+  - [x] Build `HoverModel` from cursor position
+  - [x] Render `HoverModel` to Markdown via pure function
+  - [x] Return `MarkupContent` with markdown format
+  - [x] Implement payload limits: max 32KB, max 2 code blocks, max 40 lines per block
+  - [x] Add truncation markers when limits exceeded
 
-- [ ] **HoverPlus Custom Endpoint**
+- [x] **HoverPlus Custom Endpoint**
 
-  - [ ] Implement `textDocument/hoverPlus` custom LSP method
-  - [ ] Accept optional parameters: `include_markdown`, `include_project_signals`, `max_detail_level`
-  - [ ] Return full `HoverModel` as JSON
-  - [ ] Optionally include pre-rendered markdown
-  - [ ] Support detail levels: `core`, `standard`, `deep`
-  - [ ] Implement payload limits: max 128KB for JSON
+  - [x] Implement `textDocument/hoverPlus` custom LSP method
+  - [x] Accept optional parameters: `include_markdown`, `include_project_signals`, `max_detail_level`
+  - [x] Return full `HoverModel` as JSON
+  - [x] Optionally include pre-rendered markdown
+  - [x] Support detail levels: `core`, `standard`, `deep`
+  - [x] Implement payload limits: max 128KB for JSON
 
-- [ ] **Markdown Renderer**
+- [x] **Markdown Renderer**
 
-  - [ ] Create `src/hover/markdown_renderer.rs`
-  - [ ] Implement pure function: `HoverModel -> MarkdownString`
-  - [ ] Follow heading order: Signature, Summary, Facts, Diagnostics, Resolution, Expansion, Usage, Related
-  - [ ] Render signature/shape as code block
-  - [ ] Render badges as compact bullet list
-  - [ ] Implement progressive disclosure sections (expandable)
-  - [ ] Apply truncation rules per section
+  - [x] Create `src/hover/markdown_renderer.rs`
+  - [x] Implement pure function: `HoverModel -> MarkdownString`
+  - [x] Follow heading order: Signature, Summary, Facts, Diagnostics, Resolution, Expansion, Usage, Related
+  - [x] Render signature/shape as code block
+  - [x] Render badges as compact bullet list
+  - [x] Implement progressive disclosure sections (expandable)
+  - [x] Apply truncation rules per section
 
 - [ ] **Performance Optimization**
 
-  - [ ] Implement LRU cache for `HoverModel` (512 entries)
-  - [ ] Implement LRU cache for rendered markdown (256 entries)
-  - [ ] Cache key: `(uri, version, position, view_kind)`
-  - [ ] Set compute budget: 40ms CPU time
-  - [ ] Implement graceful degradation on budget exceed
-  - [ ] Target latencies: p50 < 100ms, p95 < 250ms (warm)
+  - [x] Implement LRU cache for `HoverModel` (512 entries)
+  - [x] Implement LRU cache for rendered markdown (256 entries)
+  - [x] Cache key: `(uri, version, position, view_kind)`
+  - [x] Set compute budget: 40ms CPU time
+  - [x] Implement graceful degradation on budget exceed
+  - [ ] Target latencies: p50 < 100ms, p95 < 250ms (warm) (not enforceable in deterministic unit tests)
 
-- [ ] **Determinism Guarantees**
+- [x] **Determinism Guarantees**
 
-  - [ ] Ensure same snapshot produces byte-identical `HoverModel`
-  - [ ] Sort all lists deterministically (relevance desc, then name asc)
-  - [ ] Use stable hashing for `hover_id` generation
-  - [ ] Exclude timestamps from content
+  - [x] Ensure same snapshot produces byte-identical `HoverModel`
+  - [x] Sort all lists deterministically (relevance desc, then name asc)
+  - [x] Use stable hashing for `hover_id` generation
+  - [x] Exclude timestamps from content
 
 ### 4.3 Go to Definition Provider
 
-- [ ] **Capability Declaration**
+- [x] **Capability Declaration**
 
-  - [ ] Add `definitionProvider: true`
+  - [x] Add `definitionProvider: true`
 
-- [ ] **Implementation**
+- [x] **Implementation**
 
-  - [ ] Implement `textDocument/definition` handler
-  - [ ] Find identifier at cursor position
-  - [ ] Look up definition location in `Graph`
-  - [ ] Return `Location` pointing to declaration
+  - [x] Implement `textDocument/definition` handler
+  - [x] Find identifier at cursor position
+  - [x] Look up definition location in `Graph`
+  - [x] Return `Location` pointing to declaration
 
-- [ ] **Supported Targets**
-  - [ ] Entity references in `of "EntityName"`
-  - [ ] Entity references in `from "EntityName"` / `to "EntityName"`
-  - [ ] Resource references in `Flow "ResourceName"`
-  - [ ] Instance references
+- [x] **Supported Targets**
+  - [x] Entity references in `of "EntityName"`
+  - [x] Entity references in `from "EntityName"` / `to "EntityName"`
+  - [x] Resource references in `Flow "ResourceName"`
+  - [x] Instance references
 
 ### 4.4 Find References Provider
 
-- [ ] **Capability Declaration**
+- [x] **Capability Declaration**
 
-  - [ ] Add `referencesProvider: true`
+  - [x] Add `referencesProvider: true`
 
-- [ ] **Implementation**
-  - [ ] Implement `textDocument/references` handler
-  - [ ] Find symbol at cursor position
-  - [ ] Scan `Graph` for all references to that symbol
-  - [ ] Return `Vec<Location>` with all reference sites
+- [x] **Implementation**
+  - [x] Implement `textDocument/references` handler
+  - [x] Find symbol at cursor position
+  - [x] Scan semantic index for all references to that symbol (Graph lacks stable source locations)
+  - [x] Return `Vec<Location>` with all reference sites
 
 ### 4.5 Unit Tests for Phase 4
 
-- [ ] **Test Completion**
+- [x] **Test Completion**
 
-  - [ ] Test entity names appear after `of "`
-  - [ ] Test resource names appear in flow context
-  - [ ] Test no duplicates in completion list
+  - [x] Test entity names appear after `of "`
+  - [x] Test resource names appear in flow context
+  - [x] Test no duplicates in completion list
 
 - [ ] **Test Hover - Golden Snapshots**
 
-  - [ ] Test Entity hover shows expected metadata (name, namespace, annotations)
-  - [ ] Test Resource hover shows name, unit, namespace
-  - [ ] Test Flow hover shows resource, source, target
-  - [ ] Test hovering whitespace returns nothing
-  - [ ] Test Rule reference resolution
-  - [ ] Test ambiguous reference handling
-  - [ ] Test normalized form display
-  - [ ] Test diagnostics with constraint failure + fixes
-  - [ ] Test deprecated symbol with since metadata
-  - [ ] Test truncation markers when limits exceeded
+  - [x] Test Entity hover shows expected metadata (name, namespace, annotations)
+  - [x] Test Resource hover shows name, unit, namespace
+  - [x] Test Flow hover shows resource, source, target
+  - [x] Test Policy hover shows name, modality, kind, expression signature
+  - [x] Test hovering whitespace returns nothing
 
-- [ ] **Test Hover - Determinism**
+  - [ ] Test Rule reference resolution (blocked: SEA DSL has no Rule symbols today)
+  - [ ] Test ambiguous reference handling (blocked: SEA Graph forbids duplicate IDs; ambiguity requires module resolver)
+  - [ ] Test normalized form display (blocked: requires canonical normalizer/pretty-printer integration in hover model)
+  - [ ] Test diagnostics with constraint failure + fixes (blocked: requires policy evaluation + code action integration)
+  - [ ] Test deprecated symbol with since metadata (blocked: no deprecation metadata in core primitives today)
+  - [x] Test truncation markers when limits exceeded
 
-  - [ ] Test identical output for same (uri, version, position)
-  - [ ] Test heading order is stable across runs
-  - [ ] Test no duplicate signature in output
-  - [ ] Test lists are sorted deterministically
+- [x] **Test Hover - Determinism**
+
+  - [x] Test identical output for same (uri, version, position)
+  - [x] Test heading order is stable across runs
+  - [x] Test no duplicate signature in output
+  - [x] Test lists are sorted deterministically
 
 - [ ] **Test Hover - Performance**
 
-  - [ ] Test hover response time < 250ms (p95, warm cache)
-  - [ ] Test hover response time < 500ms (p95, cold cache)
-  - [ ] Test payload never exceeds 32KB for markdown
-  - [ ] Test payload never exceeds 128KB for JSON
-  - [ ] Test cache hit rate > 80% for repeated hovers
+  - [ ] Test hover response time < 250ms (p95, warm cache) (blocked: perf tests are nondeterministic in unit tests)
+  - [ ] Test hover response time < 500ms (p95, cold cache) (blocked: perf tests are nondeterministic in unit tests)
+  - [x] Test payload never exceeds 32KB for markdown
+  - [x] Test payload never exceeds 128KB for JSON
+  - [ ] Test cache hit rate > 80% for repeated hovers (blocked: requires harness/telemetry across many requests)
 
-- [ ] **Test HoverPlus Endpoint**
+- [x] **Test HoverPlus Endpoint**
 
-  - [ ] Test `textDocument/hoverPlus` returns valid JSON
-  - [ ] Test detail level parameter is respected
-  - [ ] Test `include_markdown` parameter works
-  - [ ] Test response includes all required HoverModel fields
+  - [x] Test `textDocument/hoverPlus` returns valid JSON
+  - [x] Test detail level parameter is respected
+  - [x] Test `include_markdown` parameter works
+  - [x] Test response includes all required HoverModel fields
 
-- [ ] **Test Go to Definition**
+- [x] **Test Go to Definition**
 
-  - [ ] Test navigation from `Instance x of "Entity"` to Entity declaration
-  - [ ] Test navigation from Flow endpoint to Entity
+  - [x] Test navigation from `Instance x of "Entity"` to Entity declaration
+  - [x] Test navigation from Flow endpoint to Entity
 
-- [ ] **Test Find References**
-  - [ ] Test finding all uses of an Entity
+- [x] **Test Find References**
+  - [x] Test finding all uses of an Entity
 
 ---
 
@@ -637,7 +641,7 @@
 
 - [ ] **MCP Protocol Transport**
   - [ ] Implement MCP protocol over stdio (for CLI/agent integration)
-  - [ ] Optionally support HTTP SSE transport for web-based agents
+  - [ ] Support HTTP SSE transport for web-based agents
   - [ ] Handle MCP `initialize`, `tools/list`, `tools/call` methods
 
 ### 8.5 VS Code Extension Integration

@@ -4,16 +4,27 @@
 //! It maintains document content in memory and delegates validation/formatting to sea-core.
 
 use std::collections::HashMap;
+use std::num::NonZeroUsize;
 
 use sea_core::parse_to_graph;
 use serde::{Deserialize, Serialize};
+use tokio::sync::Mutex;
 use tokio::sync::RwLock;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer};
 
+use lru::LruCache;
+
+use crate::completion;
 use crate::diagnostics::parse_error_to_diagnostic;
 use crate::formatting::{extract_format_options, format_document, LspFormatConfig};
+use crate::hover::markdown_renderer;
+use crate::hover::symbol_resolver::{build_hover_model, HoverBuildInput};
+use crate::hover::{DetailLevel, HoverPlusParams, HoverPlusResponse};
+use crate::line_index::LineIndex;
+use crate::navigation;
+use crate::semantic_index::SemanticIndex;
 
 /// Server-side configuration for DomainForge.
 ///
@@ -83,8 +94,12 @@ struct DocumentState {
     text: String,
     /// The LSP document version number
     version: i32,
+    /// Precomputed line index for fast position↔offset conversion
+    line_index: LineIndex,
     /// The parsed semantic graph, if parsing succeeded
     graph: Option<sea_core::Graph>,
+    /// Semantic index of definitions/references for navigation and hover
+    semantic_index: Option<SemanticIndex>,
 }
 
 impl DocumentState {
@@ -94,10 +109,13 @@ impl DocumentState {
     /// the graph field will be None.
     fn new(text: String, version: i32) -> Self {
         let graph = parse_to_graph(&text).ok();
+        let semantic_index = Some(SemanticIndex::build(&text));
         Self {
+            line_index: LineIndex::new(&text),
             text,
             version,
             graph,
+            semantic_index,
         }
     }
 
@@ -108,6 +126,8 @@ impl DocumentState {
         self.text = text;
         self.version = version;
         self.graph = parse_to_graph(&self.text).ok();
+        self.semantic_index = Some(SemanticIndex::build(&self.text));
+        self.line_index = LineIndex::new(&self.text);
     }
 }
 
@@ -124,6 +144,9 @@ pub struct Backend {
     documents: RwLock<HashMap<Url, DocumentState>>,
     /// Server configuration, updated via workspace/didChangeConfiguration
     config: RwLock<DomainForgeConfig>,
+
+    hover_model_cache: Mutex<LruCache<HoverCacheKey, crate::hover::HoverModel>>,
+    hover_markdown_cache: Mutex<LruCache<HoverCacheKey, String>>,
 }
 
 impl Backend {
@@ -133,6 +156,12 @@ impl Backend {
             client,
             documents: RwLock::new(HashMap::new()),
             config: RwLock::new(DomainForgeConfig::default()),
+            hover_model_cache: Mutex::new(LruCache::new(
+                NonZeroUsize::new(512).expect("non-zero hover model cache size"),
+            )),
+            hover_markdown_cache: Mutex::new(LruCache::new(
+                NonZeroUsize::new(256).expect("non-zero hover markdown cache size"),
+            )),
         }
     }
 
@@ -166,6 +195,167 @@ impl Backend {
     async fn get_format_config(&self) -> LspFormatConfig {
         let config = self.config.read().await;
         LspFormatConfig::from(&config.formatting)
+    }
+
+    async fn config_hash(&self) -> String {
+        let config = self.config.read().await;
+        let Ok(bytes) = serde_json::to_vec(&*config) else {
+            return "<unhashable-config>".to_string();
+        };
+        blake3::hash(&bytes).to_hex().to_string()
+    }
+
+    pub async fn hover_plus(&self, params: HoverPlusParams) -> Result<Option<HoverPlusResponse>> {
+        let uri = params.text_document.uri;
+        let detail_level = DetailLevel::parse(params.max_detail_level.as_deref());
+
+        let Some(state) = ({
+            let documents = self.documents.read().await;
+            documents.get(&uri).cloned()
+        }) else {
+            return Ok(None);
+        };
+
+        let Some(index) = state.semantic_index.as_ref() else {
+            return Ok(None);
+        };
+
+        let config_hash = self.config_hash().await;
+        let model_key = HoverCacheKey::model(&uri, state.version, params.position, detail_level);
+
+        if let Some(model) = self.hover_model_cache.lock().await.get(&model_key).cloned() {
+            let markdown = if params.include_markdown {
+                let markdown_key =
+                    HoverCacheKey::markdown(&uri, state.version, params.position, detail_level);
+                Some(self.hover_markdown_for(&markdown_key, &model).await)
+            } else {
+                None
+            };
+            return Ok(Some(HoverPlusResponse { model, markdown }));
+        }
+
+        let model = build_hover_model(HoverBuildInput {
+            uri: &uri,
+            document_version: state.version,
+            position: params.position,
+            config_hash: &config_hash,
+            detail_level,
+            line_index: &state.line_index,
+            index,
+            graph: state.graph.as_ref(),
+        });
+
+        let Some(mut model) = model else {
+            return Ok(None);
+        };
+
+        enforce_json_limits(&mut model);
+
+        self.hover_model_cache
+            .lock()
+            .await
+            .put(model_key, model.clone());
+
+        let markdown = if params.include_markdown {
+            let markdown_key =
+                HoverCacheKey::markdown(&uri, state.version, params.position, detail_level);
+            Some(self.hover_markdown_for(&markdown_key, &model).await)
+        } else {
+            None
+        };
+
+        Ok(Some(HoverPlusResponse { model, markdown }))
+    }
+
+    async fn hover_markdown_for(
+        &self,
+        key: &HoverCacheKey,
+        model: &crate::hover::HoverModel,
+    ) -> String {
+        if let Some(markdown) = self.hover_markdown_cache.lock().await.get(key).cloned() {
+            return markdown;
+        }
+
+        let rendered = markdown_renderer::render_markdown(model);
+        if !rendered.truncated_sections.is_empty() {
+            log::debug!(
+                "Hover markdown truncated sections: {:?}",
+                rendered.truncated_sections
+            );
+        }
+        let markdown = rendered.markdown;
+        self.hover_markdown_cache
+            .lock()
+            .await
+            .put(key.clone(), markdown.clone());
+        markdown
+    }
+}
+
+fn enforce_json_limits(model: &mut crate::hover::HoverModel) {
+    let max = model.limits.max_json_bytes;
+    let mut bytes = serde_json::to_vec(model).unwrap_or_default().len();
+    if bytes <= max {
+        return;
+    }
+
+    model.limits.truncated_sections.push("json".to_string());
+
+    // Deterministic, loss-first truncation to fit the payload limit.
+    model.related.clear();
+    bytes = serde_json::to_vec(model).unwrap_or_default().len();
+    if bytes <= max {
+        return;
+    }
+
+    model.primary.facts.clear();
+    bytes = serde_json::to_vec(model).unwrap_or_default().len();
+    if bytes <= max {
+        return;
+    }
+
+    if model.primary.summary.len() > 512 {
+        model.primary.summary.truncate(512);
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct HoverCacheKey {
+    uri: String,
+    version: i32,
+    line: u32,
+    character: u32,
+    detail_level: DetailLevel,
+    view_kind: ViewKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum ViewKind {
+    Markdown,
+    Json,
+}
+
+impl HoverCacheKey {
+    fn model(uri: &Url, version: i32, position: Position, detail_level: DetailLevel) -> Self {
+        Self {
+            uri: uri.to_string(),
+            version,
+            line: position.line,
+            character: position.character,
+            detail_level,
+            view_kind: ViewKind::Json,
+        }
+    }
+
+    fn markdown(uri: &Url, version: i32, position: Position, detail_level: DetailLevel) -> Self {
+        Self {
+            uri: uri.to_string(),
+            version,
+            line: position.line,
+            character: position.character,
+            detail_level,
+            view_kind: ViewKind::Markdown,
+        }
     }
 }
 
@@ -332,5 +522,259 @@ impl LanguageServer for Backend {
             log::debug!("Returning {} format edit(s) for: {}", edits.len(), uri);
             Ok(Some(edits))
         }
+    }
+
+    async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
+        let uri = params.text_document_position.text_document.uri;
+        let position = params.text_document_position.position;
+
+        let Some(state) = ({
+            let documents = self.documents.read().await;
+            documents.get(&uri).cloned()
+        }) else {
+            return Ok(None);
+        };
+
+        let response = completion::completion(
+            &state.text,
+            &state.line_index,
+            position,
+            state.graph.as_ref(),
+            state.semantic_index.as_ref(),
+        );
+        Ok(response)
+    }
+
+    async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
+        let uri = params.text_document_position_params.text_document.uri;
+        let position = params.text_document_position_params.position;
+
+        let Some(state) = ({
+            let documents = self.documents.read().await;
+            documents.get(&uri).cloned()
+        }) else {
+            return Ok(None);
+        };
+
+        let Some(index) = state.semantic_index.as_ref() else {
+            return Ok(None);
+        };
+
+        let config_hash = self.config_hash().await;
+        let detail_level = DetailLevel::Standard;
+        let model_key = HoverCacheKey::model(&uri, state.version, position, detail_level);
+
+        if let Some(model) = self.hover_model_cache.lock().await.get(&model_key).cloned() {
+            let markdown_key = HoverCacheKey::markdown(&uri, state.version, position, detail_level);
+            let markdown = self.hover_markdown_for(&markdown_key, &model).await;
+            return Ok(Some(Hover {
+                contents: HoverContents::Markup(MarkupContent {
+                    kind: MarkupKind::Markdown,
+                    value: markdown,
+                }),
+                range: None,
+            }));
+        }
+
+        let model = build_hover_model(HoverBuildInput {
+            uri: &uri,
+            document_version: state.version,
+            position,
+            config_hash: &config_hash,
+            detail_level,
+            line_index: &state.line_index,
+            index,
+            graph: state.graph.as_ref(),
+        });
+
+        let Some(model) = model else {
+            return Ok(None);
+        };
+
+        self.hover_model_cache
+            .lock()
+            .await
+            .put(model_key, model.clone());
+
+        let markdown_key = HoverCacheKey::markdown(&uri, state.version, position, detail_level);
+        let markdown = self.hover_markdown_for(&markdown_key, &model).await;
+        Ok(Some(Hover {
+            contents: HoverContents::Markup(MarkupContent {
+                kind: MarkupKind::Markdown,
+                value: markdown,
+            }),
+            range: None,
+        }))
+    }
+
+    async fn goto_definition(
+        &self,
+        params: GotoDefinitionParams,
+    ) -> Result<Option<GotoDefinitionResponse>> {
+        let uri = params.text_document_position_params.text_document.uri;
+        let position = params.text_document_position_params.position;
+
+        let Some(state) = ({
+            let documents = self.documents.read().await;
+            documents.get(&uri).cloned()
+        }) else {
+            return Ok(None);
+        };
+        let Some(index) = state.semantic_index.as_ref() else {
+            return Ok(None);
+        };
+
+        let location = navigation::goto_definition(&uri, &state.line_index, position, index);
+        Ok(location.map(GotoDefinitionResponse::Scalar))
+    }
+
+    async fn references(&self, params: ReferenceParams) -> Result<Option<Vec<Location>>> {
+        let uri = params.text_document_position.text_document.uri;
+        let position = params.text_document_position.position;
+        let include_declaration = params.context.include_declaration;
+
+        let Some(state) = ({
+            let documents = self.documents.read().await;
+            documents.get(&uri).cloned()
+        }) else {
+            return Ok(None);
+        };
+        let Some(index) = state.semantic_index.as_ref() else {
+            return Ok(None);
+        };
+
+        let locations = navigation::find_references(
+            &uri,
+            &state.line_index,
+            position,
+            index,
+            include_declaration,
+        );
+        Ok(Some(locations))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::hover::*;
+    use tower_lsp::LspService;
+
+    #[test]
+    fn hover_plus_json_is_capped_deterministically() {
+        let mut model = HoverModel {
+            schema_version: "1.0".to_string(),
+            id: "id".to_string(),
+            symbol: HoverSymbol {
+                name: "X".to_string(),
+                kind: "Entity".to_string(),
+                qualified_name: "default::X".to_string(),
+                uri: "file:///test".to_string(),
+                range: HoverRange {
+                    start: HoverPosition {
+                        line: 0,
+                        character: 0,
+                    },
+                    end: HoverPosition {
+                        line: 0,
+                        character: 1,
+                    },
+                },
+                resolve_id: "rid".to_string(),
+                resolution_confidence: "exact".to_string(),
+            },
+            context: HoverContext {
+                document_version: 1,
+                position: HoverPosition {
+                    line: 0,
+                    character: 0,
+                },
+                scope_summary: HoverScopeSummary {
+                    module: None,
+                    enclosing_rule: None,
+                    namespaces_in_scope: vec![],
+                },
+                config_hash: "cfg".to_string(),
+            },
+            primary: HoverPrimary {
+                header: HoverHeader {
+                    display_name: "X".to_string(),
+                    kind_label: "Entity".to_string(),
+                    qualified_path: "default::X".to_string(),
+                },
+                signature_or_shape: "Entity \"X\"".to_string(),
+                summary: "a".repeat(200_000),
+                badges: vec![],
+                facts: (0..500)
+                    .map(|i| (format!("k{i:03}"), "v".repeat(64)))
+                    .collect(),
+            },
+            related: (0..1000)
+                .map(|i| HoverRelated {
+                    qualified_name: format!("default::R{i:03}"),
+                    kind: "Resource".to_string(),
+                    relevance_score: 1,
+                })
+                .collect(),
+            limits: HoverLimits {
+                max_markdown_bytes: 1024,
+                max_json_bytes: 2048,
+                truncated_sections: vec![],
+            },
+        };
+
+        enforce_json_limits(&mut model);
+        let bytes = serde_json::to_vec(&model).unwrap().len();
+        assert!(bytes <= 2048, "json bytes should be capped, got {}", bytes);
+        assert!(
+            model
+                .limits
+                .truncated_sections
+                .contains(&"json".to_string()),
+            "should mark json truncation"
+        );
+    }
+
+    #[tokio::test]
+    async fn hover_plus_include_markdown_parameter_returns_markdown() {
+        let (service, _socket) = LspService::new(Backend::new);
+        let backend = service.inner();
+
+        let uri = Url::parse("file:///test.sea").unwrap();
+        let source = r#"
+Entity "Warehouse"
+Entity "Factory"
+Resource "Cameras" units
+Flow "Cameras" from "Warehouse" to "Factory" quantity 10
+"#;
+        let line_index = crate::line_index::LineIndex::new(source);
+        let offset = source.find("\"Warehouse\"").unwrap() + 2;
+        let position = line_index.position_of(offset);
+
+        backend
+            .did_open(DidOpenTextDocumentParams {
+                text_document: TextDocumentItem {
+                    uri: uri.clone(),
+                    language_id: "domainforge".to_string(),
+                    version: 1,
+                    text: source.to_string(),
+                },
+            })
+            .await;
+
+        let resp = backend
+            .hover_plus(HoverPlusParams {
+                text_document: HoverTextDocumentIdentifier { uri },
+                position,
+                include_markdown: true,
+                include_project_signals: false,
+                max_detail_level: Some("standard".to_string()),
+            })
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert!(resp.markdown.is_some());
+        assert!(resp.model.schema_version == "1.0");
     }
 }

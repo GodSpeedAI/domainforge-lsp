@@ -53,7 +53,6 @@ impl LanguageServer for Backend {
                 version: Some(env!("CARGO_PKG_VERSION").to_string()),
             }),
             capabilities: crate::capabilities::server_capabilities(),
-            ..Default::default()
         })
     }
 

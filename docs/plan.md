@@ -282,17 +282,77 @@
 
 ### 4.2 Hover Provider
 
-- [ ] **Capability Declaration**
+> **Architecture**: Implement the canonical hover model from `hover_plan.yml` with dual endpoints for human and machine consumption.
 
-  - [ ] Add `hoverProvider: true`
+- [ ] **State Management**
 
-- [ ] **Implementation**
+  - [ ] Refactor `Backend` to cache `Graph` per document (see Phase 4.2.1)
+  - [ ] Add `DocumentState` struct with `text`, `version`, and `graph` fields
+  - [ ] Update all document sync handlers to maintain cached graph
+  - [ ] Implement cache invalidation on document changes
+
+- [ ] **Canonical Hover Model**
+
+  - [ ] Create `src/hover/mod.rs` module
+  - [ ] Define `HoverModel` struct matching `hover_plan.yml` schema
+  - [ ] Implement required fields: `schema_version`, `id`, `symbol`, `context`, `primary`, `limits`
+  - [ ] Implement `symbol` resolution: name, kind, qualified_name, uri, range, resolve_id
+  - [ ] Implement `context` extraction: document_version, position, scope_summary, config_hash
+  - [ ] Implement `primary` section: header, signature_or_shape, summary, badges
+
+- [ ] **DSL Adaptation Layer**
+
+  - [ ] Create `src/hover/symbol_resolver.rs`
+  - [ ] Implement position-to-symbol lookup in `Graph`
+  - [ ] Support symbol kinds: Entity, Resource, Flow, Instance, Role, Relation, Pattern
+  - [ ] Build qualified identity: module path + symbol name
+  - [ ] Extract interpretation context: resolved target, scope, environment
+  - [ ] Implement shape/type extraction from DSL primitives
+
+- [ ] **Standard LSP Hover Endpoint**
+
+  - [ ] Add `hoverProvider: true` to server capabilities
   - [ ] Implement `textDocument/hover` handler
-  - [ ] Find semantic node at cursor position in `Graph`
-  - [ ] For Entity: show name, namespace, version, annotations
-  - [ ] For Resource: show name, unit, namespace
-  - [ ] For Flow: show resource, source, target, quantity
-  - [ ] Format as Markdown for rich display
+  - [ ] Build `HoverModel` from cursor position
+  - [ ] Render `HoverModel` to Markdown via pure function
+  - [ ] Return `MarkupContent` with markdown format
+  - [ ] Implement payload limits: max 32KB, max 2 code blocks, max 40 lines per block
+  - [ ] Add truncation markers when limits exceeded
+
+- [ ] **HoverPlus Custom Endpoint**
+
+  - [ ] Implement `textDocument/hoverPlus` custom LSP method
+  - [ ] Accept optional parameters: `include_markdown`, `include_project_signals`, `max_detail_level`
+  - [ ] Return full `HoverModel` as JSON
+  - [ ] Optionally include pre-rendered markdown
+  - [ ] Support detail levels: `core`, `standard`, `deep`
+  - [ ] Implement payload limits: max 128KB for JSON
+
+- [ ] **Markdown Renderer**
+
+  - [ ] Create `src/hover/markdown_renderer.rs`
+  - [ ] Implement pure function: `HoverModel -> MarkdownString`
+  - [ ] Follow heading order: Signature, Summary, Facts, Diagnostics, Resolution, Expansion, Usage, Related
+  - [ ] Render signature/shape as code block
+  - [ ] Render badges as compact bullet list
+  - [ ] Implement progressive disclosure sections (expandable)
+  - [ ] Apply truncation rules per section
+
+- [ ] **Performance Optimization**
+
+  - [ ] Implement LRU cache for `HoverModel` (512 entries)
+  - [ ] Implement LRU cache for rendered markdown (256 entries)
+  - [ ] Cache key: `(uri, version, position, view_kind)`
+  - [ ] Set compute budget: 40ms CPU time
+  - [ ] Implement graceful degradation on budget exceed
+  - [ ] Target latencies: p50 < 100ms, p95 < 250ms (warm)
+
+- [ ] **Determinism Guarantees**
+
+  - [ ] Ensure same snapshot produces byte-identical `HoverModel`
+  - [ ] Sort all lists deterministically (relevance desc, then name asc)
+  - [ ] Use stable hashing for `hover_id` generation
+  - [ ] Exclude timestamps from content
 
 ### 4.3 Go to Definition Provider
 
@@ -333,10 +393,40 @@
   - [ ] Test resource names appear in flow context
   - [ ] Test no duplicates in completion list
 
-- [ ] **Test Hover**
+- [ ] **Test Hover - Golden Snapshots**
 
-  - [ ] Test entity hover shows expected metadata
+  - [ ] Test Entity hover shows expected metadata (name, namespace, annotations)
+  - [ ] Test Resource hover shows name, unit, namespace
+  - [ ] Test Flow hover shows resource, source, target
   - [ ] Test hovering whitespace returns nothing
+  - [ ] Test Rule reference resolution
+  - [ ] Test ambiguous reference handling
+  - [ ] Test normalized form display
+  - [ ] Test diagnostics with constraint failure + fixes
+  - [ ] Test deprecated symbol with since metadata
+  - [ ] Test truncation markers when limits exceeded
+
+- [ ] **Test Hover - Determinism**
+
+  - [ ] Test identical output for same (uri, version, position)
+  - [ ] Test heading order is stable across runs
+  - [ ] Test no duplicate signature in output
+  - [ ] Test lists are sorted deterministically
+
+- [ ] **Test Hover - Performance**
+
+  - [ ] Test hover response time < 250ms (p95, warm cache)
+  - [ ] Test hover response time < 500ms (p95, cold cache)
+  - [ ] Test payload never exceeds 32KB for markdown
+  - [ ] Test payload never exceeds 128KB for JSON
+  - [ ] Test cache hit rate > 80% for repeated hovers
+
+- [ ] **Test HoverPlus Endpoint**
+
+  - [ ] Test `textDocument/hoverPlus` returns valid JSON
+  - [ ] Test detail level parameter is respected
+  - [ ] Test `include_markdown` parameter works
+  - [ ] Test response includes all required HoverModel fields
 
 - [ ] **Test Go to Definition**
 
@@ -461,7 +551,9 @@
 
   - [ ] Implement `domainforge/hover` tool
   - [ ] Accept: `uri: string`, `line: number`, `character: number`
+  - [ ] Reuse `HoverModel` builder from Phase 4.2
   - [ ] Return: Hover content (markdown) or null
+  - [ ] Optionally return full `HoverModel` JSON for agent consumption
   - [ ] Rate limit: Max 20 requests/second per workspace
 
 - [ ] **Definition Tool**

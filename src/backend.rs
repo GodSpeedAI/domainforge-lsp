@@ -73,17 +73,55 @@ impl From<&FormattingConfig> for LspFormatConfig {
     }
 }
 
+/// State for a single document.
+///
+/// This struct holds both the source text and the parsed semantic graph,
+/// enabling efficient hover and other language features without re-parsing.
+#[derive(Debug, Clone)]
+struct DocumentState {
+    /// The full text content of the document
+    text: String,
+    /// The LSP document version number
+    version: i32,
+    /// The parsed semantic graph, if parsing succeeded
+    graph: Option<sea_core::Graph>,
+}
+
+impl DocumentState {
+    /// Create a new DocumentState from text and version.
+    ///
+    /// Attempts to parse the text into a Graph. If parsing fails,
+    /// the graph field will be None.
+    fn new(text: String, version: i32) -> Self {
+        let graph = parse_to_graph(&text).ok();
+        Self {
+            text,
+            version,
+            graph,
+        }
+    }
+
+    /// Update the document with new text and version.
+    ///
+    /// Re-parses the text and updates the cached graph.
+    fn update(&mut self, text: String, version: i32) {
+        self.text = text;
+        self.version = version;
+        self.graph = parse_to_graph(&self.text).ok();
+    }
+}
+
 /// The Backend struct holds server state.
 ///
 /// # State
 /// - `client`: The LSP client handle for sending notifications
-/// - `documents`: In-memory storage of open document contents
+/// - `documents`: In-memory storage of open document contents and parsed graphs
 /// - `config`: Server configuration synced from the client
 pub struct Backend {
     /// The LSP client handle for sending diagnostics and other notifications
     client: Client,
-    /// In-memory storage of open document contents, keyed by document URI
-    documents: RwLock<HashMap<Url, String>>,
+    /// In-memory storage of open document state (text + parsed graph), keyed by document URI
+    documents: RwLock<HashMap<Url, DocumentState>>,
     /// Server configuration, updated via workspace/didChangeConfiguration
     config: RwLock<DomainForgeConfig>,
 }
@@ -100,19 +138,22 @@ impl Backend {
 
     /// Validate a document and publish diagnostics.
     ///
-    /// Parses the document using sea-core and converts any parse errors
-    /// into LSP diagnostics that are published to the client.
-    async fn validate_document(&self, uri: Url, text: &str) {
-        let diagnostics = match parse_to_graph(text) {
-            Ok(_graph) => {
-                // Parse succeeded - no diagnostics
-                log::debug!("Document validated successfully: {}", uri);
-                vec![]
-            }
-            Err(parse_error) => {
-                // Parse failed - convert error to diagnostic
-                log::debug!("Parse error in {}: {:?}", uri, parse_error);
-                vec![parse_error_to_diagnostic(&parse_error)]
+    /// Uses the cached graph from DocumentState if available. If parsing failed,
+    /// the error was already captured during DocumentState creation.
+    async fn validate_document(&self, uri: Url, state: &DocumentState) {
+        let diagnostics = if state.graph.is_some() {
+            // Parse succeeded - no diagnostics
+            log::debug!("Document validated successfully: {}", uri);
+            vec![]
+        } else {
+            // Parse failed - re-parse to get the error for diagnostics
+            // (We don't store the error in DocumentState to keep it simple)
+            match parse_to_graph(&state.text) {
+                Ok(_) => vec![], // Shouldn't happen, but handle gracefully
+                Err(parse_error) => {
+                    log::debug!("Parse error in {}: {:?}", uri, parse_error);
+                    vec![parse_error_to_diagnostic(&parse_error)]
+                }
             }
         };
 
@@ -151,21 +192,26 @@ impl LanguageServer for Backend {
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
         let uri = params.text_document.uri;
         let text = params.text_document.text;
+        let version = params.text_document.version;
 
         log::info!("Document opened: {}", uri);
 
-        // Store the document content
-        {
-            let mut documents = self.documents.write().await;
-            documents.insert(uri.clone(), text.clone());
-        }
+        // Create document state with parsed graph
+        let state = DocumentState::new(text, version);
 
         // Validate and publish diagnostics
-        self.validate_document(uri, &text).await;
+        self.validate_document(uri.clone(), &state).await;
+
+        // Store the document state
+        {
+            let mut documents = self.documents.write().await;
+            documents.insert(uri, state);
+        }
     }
 
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
         let uri = params.text_document.uri;
+        let version = params.text_document.version;
 
         // We use full document sync, so there's exactly one change with the full content
         if let Some(change) = params.content_changes.into_iter().next() {
@@ -173,14 +219,22 @@ impl LanguageServer for Backend {
 
             log::debug!("Document changed: {}", uri);
 
-            // Update the stored document content
-            {
+            // Update the document state
+            let state = {
                 let mut documents = self.documents.write().await;
-                documents.insert(uri.clone(), text.clone());
-            }
+                if let Some(doc_state) = documents.get_mut(&uri) {
+                    doc_state.update(text, version);
+                    doc_state.clone()
+                } else {
+                    // Document not found, create new state
+                    let new_state = DocumentState::new(text, version);
+                    documents.insert(uri.clone(), new_state.clone());
+                    new_state
+                }
+            };
 
             // Re-validate and publish diagnostics
-            self.validate_document(uri, &text).await;
+            self.validate_document(uri, &state).await;
         }
     }
 
@@ -204,23 +258,18 @@ impl LanguageServer for Backend {
 
         log::info!("Document saved: {}", uri);
 
-        // Get the document content from storage (or from params if provided)
-        let text = if let Some(text) = params.text {
-            text
-        } else {
-            // Fetch from stored documents
+        // Get the document state from storage
+        let state = {
             let documents = self.documents.read().await;
-            match documents.get(&uri) {
-                Some(content) => content.clone(),
-                None => {
-                    log::warn!("Document not found in storage: {}", uri);
-                    return;
-                }
-            }
+            documents.get(&uri).cloned()
         };
 
-        // Re-validate on save
-        self.validate_document(uri, &text).await;
+        if let Some(state) = state {
+            // Re-validate on save
+            self.validate_document(uri, &state).await;
+        } else {
+            log::warn!("Document not found in storage: {}", uri);
+        }
     }
 
     async fn did_change_configuration(&self, params: DidChangeConfigurationParams) {
@@ -252,7 +301,7 @@ impl LanguageServer for Backend {
         let text = {
             let documents = self.documents.read().await;
             match documents.get(&uri) {
-                Some(content) => content.clone(),
+                Some(state) => state.text.clone(),
                 None => {
                     log::warn!("Document not found for formatting: {}", uri);
                     return Ok(None);

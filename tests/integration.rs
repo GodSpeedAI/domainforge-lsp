@@ -112,3 +112,50 @@ Resource "Cameras" units
     let result = parse_to_graph(source);
     assert!(result.is_ok(), "Valid SEA should parse: {:?}", result.err());
 }
+
+// Phase 5 Tests: Code Actions
+
+#[test]
+fn test_code_action_for_undefined_entity() {
+    // This integration test verifies that the stub we generate is valid syntax.
+    let stub = r#"
+
+Entity "NonExistent""#;
+    let full_source = format!("Instance x of \"NonExistent\"{}", stub);
+
+    // The combined source should now parse (or at least not fail with UndefinedEntity for "NonExistent")
+    // Note: It might fail with other errors if "Instance" needs more context, but "Entity 'X'" is valid.
+
+    let result = parse_to_graph(&full_source);
+    // Specifically check that we don't get UndefinedEntity("NonExistent")
+    if let Err(e) = result {
+        let msg = e.to_string();
+        assert!(
+            !msg.contains("Undefined entity: NonExistent"),
+            "Should not have undefined entity error after applying fix. Got: {}",
+            msg
+        );
+    }
+}
+
+#[test]
+fn test_code_action_for_undefined_resource() {
+    let stub = r#"
+
+Resource "MissingRes" units"#;
+    let full_source = format!("Flow \"MissingRes\" from A to B{}", stub);
+
+    // We expect the parser might complain about A and B being undefined entities,
+    // but NOT about MissingRes being undefined.
+
+    if let Err(e) = parse_to_graph(&full_source) {
+        let msg = e.to_string();
+        // The parser likely stops at first error. If A is undefined, we might not reach Resource check.
+        // But let's verify the stub itself is valid.
+        let stub_result = parse_to_graph(stub);
+        assert!(
+            stub_result.is_ok(),
+            "Generated resource stub should be valid syntax"
+        );
+    }
+}

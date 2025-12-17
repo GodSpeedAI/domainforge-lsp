@@ -5,6 +5,7 @@
 
 mod backend;
 mod capabilities;
+mod code_actions;
 mod completion;
 mod diagnostics;
 mod formatting;

@@ -700,7 +700,7 @@ fn resolve_policy(name: &str, graph: Option<&Graph>) -> ResolvedSymbol {
                         None,
                     ),
                     [policy] => {
-                        let expr_str = format!("{}", policy.expression);
+                        let expr_str = format!("{}", policy.expression());
                         let expr_summary = if expr_str.len() > 80 {
                             format!("{}…", &expr_str[..77])
                         } else {

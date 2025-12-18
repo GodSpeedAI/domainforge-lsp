@@ -681,16 +681,16 @@
 
 ### 8.5 VS Code Extension Integration
 
-- [ ] **MCP Server Lifecycle**
+- [x] **MCP Server Lifecycle**
 
-  - [ ] Spawn `domainforge-mcp` alongside or instead of direct LSP spawn
-  - [ ] Pass workspace folder paths as allowlist
-  - [ ] Handle MCP server process lifecycle (start, stop, restart)
+  - [x] Spawn `domainforge-mcp` alongside or instead of direct LSP spawn
+  - [x] Pass workspace folder paths as allowlist
+  - [x] Handle MCP server process lifecycle (start, stop, restart)
 
-- [ ] **Configuration Options**
-  - [ ] Add `domainforge.mcp.enable: boolean` setting (default: false)
-  - [ ] Add `domainforge.mcp.rateLimits` object for per-tool limits
-  - [ ] Add `domainforge.mcp.auditLog.path` for log file location
+- [x] **Configuration Options**
+  - [x] Add `domainforge.mcp.enable: boolean` setting (default: false)
+  - [x] Add `domainforge.mcp.rateLimits` object for per-tool limits
+  - [x] Add `domainforge.mcp.auditLog.path` for log file location
 
 ### 8.6 Unit Tests for Phase 8
 

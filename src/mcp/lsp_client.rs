@@ -7,11 +7,14 @@ use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
 use tokio::sync::{mpsc, oneshot, Mutex, RwLock};
 
+/// Type alias for pending request map to reduce type complexity
+type PendingRequests = Arc<Mutex<HashMap<i64, oneshot::Sender<anyhow::Result<Value>>>>>;
+
 pub struct LspClient {
     child: Child,
     request_id: AtomicI64,
     sender: mpsc::Sender<Value>,
-    pending_requests: Arc<Mutex<HashMap<i64, oneshot::Sender<anyhow::Result<Value>>>>>,
+    pending_requests: PendingRequests,
     pub diagnostics_cache: Arc<RwLock<HashMap<String, Vec<Value>>>>, // URI -> Diagnostics list
 }
 
@@ -33,8 +36,7 @@ impl LspClient {
             .ok_or(anyhow::anyhow!("Failed to open stdout"))?;
 
         let (tx, mut rx) = mpsc::channel::<Value>(32);
-        let pending_requests: Arc<Mutex<HashMap<i64, oneshot::Sender<anyhow::Result<Value>>>>> =
-            Arc::new(Mutex::new(HashMap::new()));
+        let pending_requests: PendingRequests = Arc::new(Mutex::new(HashMap::new()));
 
         let diagnostics_cache = Arc::new(RwLock::new(HashMap::new()));
 
@@ -295,9 +297,7 @@ impl LspClient {
     }
 }
 
-async fn abort_pending_requests(
-    pending: &Arc<Mutex<HashMap<i64, oneshot::Sender<anyhow::Result<Value>>>>>,
-) {
+async fn abort_pending_requests(pending: &PendingRequests) {
     let mut map = pending.lock().await;
     for (_, sender) in map.drain() {
         let _ = sender.send(Err(anyhow::anyhow!("LSP Client connection lost")));

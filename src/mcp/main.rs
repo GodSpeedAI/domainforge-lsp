@@ -46,7 +46,10 @@ async fn main() -> anyhow::Result<()> {
         match std::env::current_dir() {
             Ok(p) => vec![p],
             Err(e) => {
-                log::warn!("Could not determine CWD, defaulting to empty allowed paths: {}", e);
+                log::warn!(
+                    "Could not determine CWD, defaulting to empty allowed paths: {}",
+                    e
+                );
                 vec![]
             }
         }

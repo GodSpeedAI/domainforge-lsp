@@ -50,7 +50,7 @@ async fn references_tool(args: Value, client: &LspClient, guard: &Guard) -> anyh
 async fn diagnostics_tool(args: Value, client: &LspClient, guard: &Guard) -> anyhow::Result<Value> {
     let uri = extract_uri(&args, guard)?;
     let cache = client.diagnostics_cache.read().await;
-    let diags = cache.get(&uri).cloned().unwrap_or_else(|| vec![]);
+    let diags = cache.get(&uri).cloned().unwrap_or_else(Vec::new);
     Ok(json!(diags))
 }
 

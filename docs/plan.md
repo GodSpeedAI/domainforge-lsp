@@ -498,27 +498,61 @@
 
 ### 6.1 WASM Build Target
 
-- [ ] **sea-core WASM Verification**
+- [x] **sea-core WASM Verification**
 
-  - [ ] Verify `sea-core` builds with `wasm32-unknown-unknown` target
-  - [ ] Verify formatter feature works in WASM
-  - [ ] Verify parser works in WASM
+  - [x] Verify `sea-core` builds with `wasm32-unknown-unknown` target
+  - [x] Verify formatter feature works in WASM
+  - [x] Verify parser works in WASM
 
-- [ ] **LSP WASM Considerations**
-  - [ ] Research `tower-lsp` WASM compatibility
-  - [ ] Determine if full server WASM or TypeScript wrapper around WASM core
+- [x] **LSP WASM Considerations**
+  - [x] Research `tower-lsp` WASM compatibility
+  - [x] Determine if full server WASM or TypeScript wrapper around WASM core
+  - [x] **Decision**: TypeScript LSP server wrapper using `vscode-languageserver/browser` with sea-core WASM for parsing/formatting
 
 ### 6.2 Web Extension Manifest
 
-- [ ] **package.json Updates**
+- [x] **package.json Updates**
 
-  - [ ] Add `browser` entry point
-  - [ ] Add `web` extension kind
-  - [ ] Bundle WASM binary
+  - [x] Add `browser` entry point (`./dist/web/extensionWeb.js`)
+  - [x] Add `workspace` extension kind
+  - [x] Bundle WASM binary via esbuild copy plugin
 
-- [ ] **Fallback Strategy**
-  - [ ] Detect if running in browser vs desktop
-  - [ ] Use WASM in browser, native binary in desktop
+- [x] **Fallback Strategy**
+  - [x] Detect if running in browser vs desktop via entry points (`main` vs `browser`)
+  - [x] Use WASM in browser, native binary in desktop
+
+### 6.3 Browser LSP Server Implementation
+
+- [x] Create `src/web/browserServer.ts` using `vscode-languageserver/browser`
+- [x] Implement `BrowserMessageReader`/`BrowserMessageWriter` for web worker communication
+- [x] Integrate sea-core WASM `Graph.parse()` for diagnostics
+- [x] Integrate sea-core WASM `formatSource()` for formatting
+
+### 6.4 Browser Extension Client
+
+- [x] Create `src/web/extensionWeb.ts` browser entry point
+- [x] Implement Web Worker-based language client
+- [x] Add restart command support
+
+### 6.5 Build Infrastructure
+
+- [x] Update `esbuild.js` for dual desktop/web builds
+- [x] Add WASM copy plugin to bundle `sea_core.js` and `sea_core_bg.wasm`
+- [x] Create separate `tsconfig.web.json` to avoid DOM/WebWorker type conflicts
+- [x] Add `compile-web` and `test-web` npm scripts
+
+### 6.6 Testing & CI
+
+- [x] Build compiles successfully with all files generated
+- [x] Add web bundle size check to CI workflow
+- [x] Add web extension file validation to CI workflow
+- [ ] Test in vscode.dev (manual, requires Playwright: `pnpm exec playwright install`)
+
+### 6.7 Documentation
+
+- [x] Update `README.md` with web support section and feature comparison table
+- [x] Document extension settings
+- [x] Add development instructions
 
 ---
 

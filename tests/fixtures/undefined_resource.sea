@@ -1,0 +1,3 @@
+// References an undefined resource
+Entity "Test"
+Flow "NonExistent" from "Test" to "Test" quantity 1

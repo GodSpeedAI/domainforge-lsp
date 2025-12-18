@@ -652,6 +652,26 @@ impl LanguageServer for Backend {
         );
         Ok(Some(locations))
     }
+
+    async fn code_action(
+        &self,
+        params: CodeActionParams,
+    ) -> Result<Option<Vec<CodeActionOrCommand>>> {
+        let uri = params.text_document.uri;
+        let range = params.range;
+        let diagnostics = params.context.diagnostics;
+
+        let Some(text) = ({
+            let documents = self.documents.read().await;
+            documents.get(&uri).map(|s| s.text.clone())
+        }) else {
+            return Ok(None);
+        };
+
+        let actions = crate::code_actions::provide_code_actions(&uri, range, &diagnostics, &text);
+
+        Ok(Some(actions))
+    }
 }
 
 #[cfg(test)]

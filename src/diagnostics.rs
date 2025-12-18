@@ -28,24 +28,24 @@ pub fn parse_error_to_diagnostic(error: &ParseError) -> Diagnostic {
             let range = sea_range_to_lsp_range(*line, *column, *line, *column + 10);
             error_diagnostic(range, message.clone(), "E005".to_string())
         }
-        ParseError::UndefinedEntity(name) => {
-            let range = sea_range_to_lsp_range(1, 1, 1, 1);
+        ParseError::UndefinedEntity { name, line, column } => {
+            let range = sea_range_to_lsp_range(*line, *column, *line, *column + name.len());
             error_diagnostic(
                 range,
                 format!("Undefined entity: {}", name),
                 "E001".to_string(),
             )
         }
-        ParseError::UndefinedResource(name) => {
-            let range = sea_range_to_lsp_range(1, 1, 1, 1);
+        ParseError::UndefinedResource { name, line, column } => {
+            let range = sea_range_to_lsp_range(*line, *column, *line, *column + name.len());
             error_diagnostic(
                 range,
                 format!("Undefined resource: {}", name),
                 "E002".to_string(),
             )
         }
-        ParseError::DuplicateDeclaration(name) => {
-            let range = sea_range_to_lsp_range(1, 1, 1, 1);
+        ParseError::DuplicateDeclaration { name, line, column } => {
+            let range = sea_range_to_lsp_range(*line, *column, *line, *column + name.len());
             error_diagnostic(
                 range,
                 format!("Duplicate declaration: {}", name),
@@ -161,5 +161,66 @@ mod tests {
         assert_eq!(diag.severity, Some(DiagnosticSeverity::ERROR));
         assert_eq!(diag.code, Some(NumberOrString::String("E001".to_string())));
         assert_eq!(diag.source, Some("domainforge".to_string()));
+    }
+
+    #[test]
+    fn test_parse_error_to_diagnostic() {
+        // SyntaxError
+        let error = ParseError::SyntaxError {
+            message: "Unexpected token".to_string(),
+            line: 5,
+            column: 10,
+        };
+        let diag = parse_error_to_diagnostic(&error);
+        assert_eq!(diag.code, Some(NumberOrString::String("E005".to_string())));
+        assert_eq!(diag.severity, Some(DiagnosticSeverity::ERROR));
+        assert_eq!(diag.range.start.line, 4); // 5 - 1
+        assert_eq!(diag.range.start.character, 9); // 10 - 1
+
+        // UndefinedEntity
+        let error = ParseError::UndefinedEntity {
+            name: "User".to_string(),
+            line: 1,
+            column: 1,
+        };
+        let diag = parse_error_to_diagnostic(&error);
+        assert_eq!(diag.code, Some(NumberOrString::String("E001".to_string())));
+        assert!(diag.message.contains("Undefined entity"));
+        assert!(diag.message.contains("User"));
+
+        // UndefinedResource
+        let error = ParseError::UndefinedResource {
+            name: "DB".to_string(),
+            line: 1,
+            column: 1,
+        };
+        let diag = parse_error_to_diagnostic(&error);
+        assert_eq!(diag.code, Some(NumberOrString::String("E002".to_string())));
+        assert!(diag.message.contains("Undefined resource"));
+
+        // DuplicateDeclaration
+        let error = ParseError::DuplicateDeclaration {
+            name: "id".to_string(),
+            line: 1,
+            column: 1,
+        };
+        let diag = parse_error_to_diagnostic(&error);
+        assert_eq!(diag.code, Some(NumberOrString::String("E007".to_string())));
+
+        // TypeError
+        let error = ParseError::TypeError {
+            message: "Type mismatch".to_string(),
+            location: "field".to_string(),
+        };
+        let diag = parse_error_to_diagnostic(&error);
+        assert_eq!(diag.code, Some(NumberOrString::String("E004".to_string())));
+    }
+
+    #[test]
+    fn test_warning_diagnostic_creation() {
+        let range = sea_range_to_lsp_range(1, 1, 1, 5);
+        let diag = warning_diagnostic(range, "Deprecated usage".to_string(), "W001".to_string());
+        assert_eq!(diag.severity, Some(DiagnosticSeverity::WARNING));
+        assert_eq!(diag.code, Some(NumberOrString::String("W001".to_string())));
     }
 }

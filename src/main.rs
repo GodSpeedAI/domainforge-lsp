@@ -3,20 +3,9 @@
 //! This is a thin wrapper around `sea-core` that provides Language Server Protocol support
 //! for the SEA DSL. It handles JSON-RPC communication and delegates all actual work to sea-core.
 
-mod backend;
-mod capabilities;
-mod code_actions;
-mod completion;
-mod diagnostics;
-mod formatting;
-mod hover;
-mod line_index;
-mod navigation;
-mod semantic_index;
-
 use tower_lsp::{LspService, Server};
 
-use crate::backend::Backend;
+use domainforge_lsp::backend::Backend;
 
 #[tokio::main]
 async fn main() {

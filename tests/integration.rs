@@ -89,19 +89,56 @@ Entity "Test" {
             assert!(!message.is_empty(), "Error message should not be empty");
         }
         other => {
-            // If it's not a SyntaxError, the test should still pass if it's a related parse error
-            // that contains location info in its Display representation
+            // Check that the error string contains location information
+            // e.g. "at line 5, column 10" or "5:10"
             let error_str = other.to_string();
+            let has_location = error_str.contains("line") && error_str.contains("column")
+                || error_str.contains(':') && error_str.chars().any(|c| c.is_numeric());
+
             assert!(
-                error_str.contains("error") || error_str.contains("Error"),
-                "Expected a parse error, got: {:?}",
-                other
+                has_location,
+                "Error should contain location information. Got: {}",
+                error_str
             );
         }
     }
 }
 
 /// Test that a valid SEA snippet produces no parse error.
+/// Test that semantic errors report correct line and column.
+#[test]
+fn test_semantic_error_has_location() {
+    use sea_core::parser::ParseError;
+
+    // This should fail to parse due to undefined entity
+    let source = r#"
+Entity "MyEntity" in domain
+Instance my_instance of "UndefinedEntity"
+"#;
+
+    let result = parse_to_graph(source);
+    assert!(result.is_err(), "Should produce a parse error");
+
+    let error = result.unwrap_err();
+
+    match error {
+        ParseError::UndefinedEntity { name, line, column } => {
+            assert_eq!(name, "UndefinedEntity");
+            assert!(line > 0, "Line should be positive, got: {}", line);
+            assert!(column > 0, "Column should be positive, got: {}", column);
+        }
+        ParseError::GrammarError(msg) => {
+            // Instance validation errors come as GrammarError containing entity name
+            assert!(
+                msg.contains("UndefinedEntity"),
+                "Error should mention the undefined entity. Got: {}",
+                msg
+            );
+        }
+        _ => panic!("Expected UndefinedEntity or GrammarError, got: {:?}", error),
+    }
+}
+
 #[test]
 fn test_valid_sea_parses_successfully() {
     let source = r#"
@@ -149,7 +186,7 @@ Resource "MissingRes" units"#;
     // but NOT about MissingRes being undefined.
 
     if let Err(e) = parse_to_graph(&full_source) {
-        let msg = e.to_string();
+        let _msg = e.to_string();
         // The parser likely stops at first error. If A is undefined, we might not reach Resource check.
         // But let's verify the stub itself is valid.
         let stub_result = parse_to_graph(stub);

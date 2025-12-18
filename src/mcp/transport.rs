@@ -83,7 +83,8 @@ pub async fn run_stdio_loop(
             }
             Ok(JsonRpcRequest::ToolsCall { id, params }) => {
                 log::info!("Calling tool: {}", params.name);
-                match tools::handle_tool_call(&params.name, params.arguments, client, &guard).await {
+                match tools::handle_tool_call(&params.name, params.arguments, client, &guard).await
+                {
                     Ok(result) => {
                         let resp = serde_json::json!({
                             "jsonrpc": "2.0",

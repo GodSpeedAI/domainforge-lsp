@@ -74,7 +74,7 @@ fn calculate_end_position(text: &str) -> Position {
         Some(pos) => &text[pos + 1..],
         None => text,
     };
-    
+
     // Convert logic to UTF-16 code unit count as per LSP spec
     let character = suffix.encode_utf16().count();
 

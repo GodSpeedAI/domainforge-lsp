@@ -41,7 +41,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: GodSpeedAI/DomainForge
-          ref: v0.4.0
+          ref: dev  # Track dev branch to stay in sync with sea-core API changes
           path: domainforge
 
       - name: Setup Rust

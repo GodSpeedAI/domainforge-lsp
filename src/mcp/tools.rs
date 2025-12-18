@@ -70,10 +70,11 @@ async fn rename_preview_tool(
     // The LSP rename returns a WorkspaceEdit. We just return that.
     let edit = client.rename(&uri, line, char, new_name).await?;
 
-    // We can wrap it or just return it. The plan said "Flag response with requiresHumanApproval".
-    // But standard MCP clients might just show the JSON.
-    // Let's return the edit directly for now.
-    Ok(edit)
+    // Wrap the edit to indicate it requires human approval
+    Ok(json!({
+        "requiresHumanApproval": true,
+        "edit": edit
+    }))
 }
 
 async fn code_action_tool(args: Value, client: &LspClient, guard: &Guard) -> anyhow::Result<Value> {

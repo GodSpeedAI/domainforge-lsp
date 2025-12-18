@@ -84,7 +84,9 @@ Instance vendor_123 of "Vendor" {
         let line_index = LineIndex::new(source);
         let index = SemanticIndex::build(source);
 
-        let offset = source.find("\"Vendor\"").unwrap() + 2;
+        // Use rfind to get the second occurrence (the usage in 'of "Vendor"'),
+        // not the first one (the definition 'Entity "Vendor"').
+        let offset = source.rfind("\"Vendor\"").unwrap() + 2;
         let pos = line_index.position_of(offset);
         let loc = goto_definition(&uri, &line_index, pos, &index).expect("definition");
 

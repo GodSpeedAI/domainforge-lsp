@@ -42,9 +42,14 @@ async fn main() -> anyhow::Result<()> {
     let root_paths = if let Some(root) = &args.workspace_root {
         vec![std::path::PathBuf::from(root)]
     } else {
-        vec![] // No root means stricter default? Or maybe allow nothing?
-               // For now, empty list means nothing allowed if we strictly check.
-               // But typically CWD might be implied. Let's stick to explicit root.
+        // Default to CWD if no root provided
+        match std::env::current_dir() {
+            Ok(p) => vec![p],
+            Err(e) => {
+                log::warn!("Could not determine CWD, defaulting to empty allowed paths: {}", e);
+                vec![]
+            }
+        }
     };
     let guard = std::sync::Arc::new(crate::guardrails::Guard::new(root_paths));
 

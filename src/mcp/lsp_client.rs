@@ -40,18 +40,21 @@ impl LspClient {
 
         // Writer task
         let mut stdin = stdin;
+        let pending_requests_writer = pending_requests.clone();
         tokio::spawn(async move {
             while let Some(msg) = rx.recv().await {
-                // ... (writer logic is same)
-                let body = serde_json::to_string(&msg).unwrap();
+                let body = serde_json::to_string(&msg).expect("Failed to serialize LSP message");
                 let content_length = body.len();
                 let header = format!("Content-Length: {}\r\n\r\n{}", content_length, body);
+
                 if let Err(e) = stdin.write_all(header.as_bytes()).await {
                     log::error!("Failed to write to LSP stdin: {}", e);
+                    abort_pending_requests(&pending_requests_writer).await;
                     break;
                 }
                 if let Err(e) = stdin.flush().await {
                     log::error!("Failed to flush LSP stdin: {}", e);
+                    abort_pending_requests(&pending_requests_writer).await;
                     break;
                 }
             }
@@ -212,7 +215,13 @@ impl LspClient {
         self.send_request(id, req).await
     }
 
-    pub async fn references(&self, uri: &str, line: u64, character: u64, include_decl: bool) -> anyhow::Result<Value> {
+    pub async fn references(
+        &self,
+        uri: &str,
+        line: u64,
+        character: u64,
+        include_decl: bool,
+    ) -> anyhow::Result<Value> {
         let id = self.request_id.fetch_add(1, Ordering::SeqCst);
         let req = json!({
             "jsonrpc": "2.0",
@@ -227,7 +236,13 @@ impl LspClient {
         self.send_request(id, req).await
     }
 
-    pub async fn rename(&self, uri: &str, line: u64, character: u64, new_name: &str) -> anyhow::Result<Value> {
+    pub async fn rename(
+        &self,
+        uri: &str,
+        line: u64,
+        character: u64,
+        new_name: &str,
+    ) -> anyhow::Result<Value> {
         let id = self.request_id.fetch_add(1, Ordering::SeqCst);
         let req = json!({
             "jsonrpc": "2.0",
@@ -277,5 +292,14 @@ impl LspClient {
     pub async fn shutdown(&mut self) -> anyhow::Result<()> {
         self.child.kill().await?;
         Ok(())
+    }
+}
+
+async fn abort_pending_requests(
+    pending: &Arc<Mutex<HashMap<i64, oneshot::Sender<anyhow::Result<Value>>>>>,
+) {
+    let mut map = pending.lock().await;
+    for (_, sender) in map.drain() {
+        let _ = sender.send(Err(anyhow::anyhow!("LSP Client connection lost")));
     }
 }

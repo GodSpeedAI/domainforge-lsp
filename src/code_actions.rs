@@ -70,10 +70,13 @@ fn calculate_end_position(text: &str) -> Position {
     let line = text.matches('\n').count();
     // The character is the length of the suffix after the last newline.
     let last_newline_pos = text.rfind('\n');
-    let character = match last_newline_pos {
-        Some(pos) => text.len() - pos - 1,
-        None => text.len(),
+    let suffix = match last_newline_pos {
+        Some(pos) => &text[pos + 1..],
+        None => text,
     };
+    
+    // Convert logic to UTF-16 code unit count as per LSP spec
+    let character = suffix.encode_utf16().count();
 
     Position {
         line: line as u32,
@@ -273,6 +276,22 @@ mod tests {
             Position {
                 line: 2,
                 character: 1
+            }
+        );
+        assert_eq!(
+            calculate_end_position("hello\nuni©ode"), // '©' is 2 bytes in UTF-8, 1 unit in UTF-16
+            Position {
+                line: 1,
+                // u, n, i, ©, o, d, e = 7 chars
+                character: 7
+            }
+        );
+        assert_eq!(
+            calculate_end_position("hello\nuni🤔de"), // '🤔' is 4 bytes in UTF-8, 2 units in UTF-16
+            Position {
+                line: 1,
+                // u, n, i, 🤔(2), d, e = 3 + 2 + 2 = 7 units
+                character: 7
             }
         );
     }

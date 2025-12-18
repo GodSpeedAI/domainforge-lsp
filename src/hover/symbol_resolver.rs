@@ -701,8 +701,9 @@ fn resolve_policy(name: &str, graph: Option<&Graph>) -> ResolvedSymbol {
                     ),
                     [policy] => {
                         let expr_str = format!("{}", policy.expression());
-                        let expr_summary = if expr_str.len() > 80 {
-                            format!("{}…", &expr_str[..77])
+                        let expr_summary = if expr_str.chars().count() > 80 {
+                            let truncated: String = expr_str.chars().take(77).collect();
+                            format!("{}…", truncated)
                         } else {
                             expr_str
                         };

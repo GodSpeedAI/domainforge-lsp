@@ -681,16 +681,16 @@
 
 ### 8.5 VS Code Extension Integration
 
-- [ ] **MCP Server Lifecycle**
+- [x] **MCP Server Lifecycle**
 
-  - [ ] Spawn `domainforge-mcp` alongside or instead of direct LSP spawn
-  - [ ] Pass workspace folder paths as allowlist
-  - [ ] Handle MCP server process lifecycle (start, stop, restart)
+  - [x] Spawn `domainforge-mcp` alongside or instead of direct LSP spawn
+  - [x] Pass workspace folder paths as allowlist
+  - [x] Handle MCP server process lifecycle (start, stop, restart)
 
-- [ ] **Configuration Options**
-  - [ ] Add `domainforge.mcp.enable: boolean` setting (default: false)
-  - [ ] Add `domainforge.mcp.rateLimits` object for per-tool limits
-  - [ ] Add `domainforge.mcp.auditLog.path` for log file location
+- [x] **Configuration Options**
+  - [x] Add `domainforge.mcp.enable: boolean` setting (default: false)
+  - [x] Add `domainforge.mcp.rateLimits` object for per-tool limits
+  - [x] Add `domainforge.mcp.auditLog.path` for log file location
 
 ### 8.6 Unit Tests for Phase 8
 
@@ -722,44 +722,44 @@
 
 ### 7.1 Marketplace Preparation
 
-- [ ] **Extension Metadata**
+- [x] **Extension Metadata**
 
-  - [ ] Add icon: 128x128 PNG
-  - [ ] Write README with feature list and screenshots
-  - [ ] Add CHANGELOG.md
-  - [ ] Add LICENSE file
-  - [ ] Set publisher ID in package.json
+  - [x] Add icon: 128x128 PNG
+  - [x] Write README with feature list and screenshots
+  - [x] Add CHANGELOG.md
+  - [x] Add LICENSE file
+  - [x] Set publisher ID in package.json
 
-- [ ] **Quality Checklist**
-  - [ ] All CI checks pass
-  - [ ] Manual testing on Windows, macOS, Linux
-  - [ ] README has installation instructions
-  - [ ] README has usage examples
+- [x] **Quality Checklist**
+  - [x] All CI checks pass
+  - [x] Manual testing on Windows, macOS, Linux
+  - [x] README has installation instructions
+  - [x] README has usage examples
 
 ### 7.2 Publish Pipeline
 
-- [ ] **Marketplace Credentials**
+- [x] **Marketplace Credentials**
 
-  - [ ] Set up Azure DevOps PAT for publishing
-  - [ ] Store as GitHub secret
+  - [x] Set up Azure DevOps PAT for publishing
+  - [x] Store as GitHub secret (token is named `VSCE_PAT`)
 
-- [ ] **Automated Publish**
-  - [ ] Add publish step to release workflow
-  - [ ] Run `vsce publish` after VSIX is built
-  - [ ] Create GitHub Release with VSIX attachment
+- [x] **Automated Publish**
+  - [x] Add publish step to release workflow
+  - [x] Run `vsce publish` after VSIX is built
+  - [x] Create GitHub Release with VSIX attachment
 
 ### 7.3 Version Management
 
-- [ ] **Semantic Versioning**
+- [x] **Semantic Versioning**
 
-  - [ ] Establish versioning policy (e.g., major for breaking LSP changes)
-  - [ ] Sync version between `Cargo.toml` and `package.json`
+  - [x] Establish versioning policy (e.g., major for breaking LSP changes)
+  - [x] Sync version between `Cargo.toml` and `package.json`
 
-- [ ] **Release Checklist**
-  - [ ] Update CHANGELOG
-  - [ ] Bump version in manifests
-  - [ ] Create annotated git tag
-  - [ ] Push tag to trigger release workflow
+- [x] **Release Checklist**
+  - [x] Update CHANGELOG
+  - [x] Bump version in manifests
+  - [x] Create annotated git tag
+  - [x] Push tag to trigger release workflow
 
 ---
 

@@ -60,6 +60,66 @@ pub fn parse_error_to_diagnostic(error: &ParseError) -> Diagnostic {
                 "E004".to_string(),
             )
         }
+        // E500: Namespace not found
+        ParseError::NamespaceNotFound {
+            namespace,
+            line,
+            column,
+            suggestion,
+        } => {
+            let range = sea_range_to_lsp_range(*line, *column, *line, *column + namespace.len());
+            let message = match suggestion {
+                Some(sug) => format!(
+                    "Namespace '{}' not found. Did you mean '{}'?",
+                    namespace, sug
+                ),
+                None => format!("Namespace '{}' not found", namespace),
+            };
+            error_diagnostic(range, message, "E500".to_string())
+        }
+        // E503: Module not found
+        ParseError::ModuleNotFound {
+            module_path,
+            line,
+            column,
+        } => {
+            let range = sea_range_to_lsp_range(*line, *column, *line, *column + module_path.len());
+            error_diagnostic(
+                range,
+                format!("Module '{}' not found", module_path),
+                "E503".to_string(),
+            )
+        }
+        // E504: Symbol not exported
+        ParseError::SymbolNotExported {
+            symbol,
+            module,
+            line,
+            column,
+            available_exports,
+        } => {
+            let range = sea_range_to_lsp_range(*line, *column, *line, *column + symbol.len());
+            let message = if available_exports.is_empty() {
+                format!("Symbol '{}' is not exported by module '{}'", symbol, module)
+            } else {
+                format!(
+                    "Symbol '{}' is not exported by module '{}'. Available exports: {}",
+                    symbol,
+                    module,
+                    available_exports.join(", ")
+                )
+            };
+            error_diagnostic(range, message, "E504".to_string())
+        }
+        // E505: Circular dependency
+        ParseError::CircularDependency { cycle } => {
+            let range = sea_range_to_lsp_range(1, 1, 1, 1);
+            error_diagnostic(
+                range,
+                format!("Circular dependency detected: {}", cycle.join(" -> ")),
+                "E505".to_string(),
+            )
+        }
         _ => {
             // For other errors, show at file start with the error message
             let range = sea_range_to_lsp_range(1, 1, 1, 1);

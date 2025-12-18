@@ -15,13 +15,14 @@ use tower_lsp::lsp_types::*;
 /// * `text` - The full text content of the document (used for analyzing context)
 pub fn provide_code_actions(
     uri: &Url,
-    _range: Range,
+    range: Range,
     diagnostics: &[Diagnostic],
     text: &str,
 ) -> Vec<CodeActionOrCommand> {
     let mut actions = Vec::new();
     let end_position = calculate_end_position(text);
 
+    // Quick fixes based on diagnostics
     for diagnostic in diagnostics {
         if let Some(NumberOrString::String(code)) = &diagnostic.code {
             match code.as_str() {
@@ -38,9 +39,21 @@ pub fn provide_code_actions(
                         actions.push(fix);
                     }
                 }
+                "E500" => {
+                    // Namespace not found - offer to add import
+                    if let Some(fix) = create_namespace_import_fix(uri, diagnostic) {
+                        actions.push(fix);
+                    }
+                }
+                "E504" => {
+                    // Symbol not exported - offer to use wildcard import or suggest available exports
+                    if let Some(fix) = create_symbol_export_fix(uri, diagnostic) {
+                        actions.push(fix);
+                    }
+                }
                 "E000" => {
-                    // Generic Error (check for namespace issues manually)
-                    // TODO: Replace with E500 when sea-core adds it
+                    // Generic Error (legacy fallback for namespace issues)
+                    // TODO: Remove this once all namespace errors use E500+
                     if diagnostic.message.to_lowercase().contains("module")
                         && diagnostic.message.to_lowercase().contains("resolved")
                     {
@@ -52,6 +65,28 @@ pub fn provide_code_actions(
                 _ => {}
             }
         }
+    }
+
+    // Refactoring actions based on selection
+    actions.extend(provide_refactoring_actions(uri, range, text));
+
+    actions
+}
+
+/// Provide refactoring code actions based on the selected range.
+///
+/// These are not diagnostic-based fixes, but refactoring operations triggered
+/// when the user selects text.
+pub fn provide_refactoring_actions(
+    uri: &Url,
+    range: Range,
+    text: &str,
+) -> Vec<CodeActionOrCommand> {
+    let mut actions = Vec::new();
+
+    // Check for Extract to Pattern refactoring
+    if let Some(action) = create_extract_to_pattern_action(uri, range, text) {
+        actions.push(action);
     }
 
     actions
@@ -237,6 +272,371 @@ fn create_missing_import_fix(uri: &Url, diagnostic: &Diagnostic) -> Option<CodeA
     }))
 }
 
+/// Create a Quick Fix for E500: Namespace not found.
+/// Generates an import statement for the missing namespace.
+fn create_namespace_import_fix(uri: &Url, diagnostic: &Diagnostic) -> Option<CodeActionOrCommand> {
+    // Message format: "Namespace 'xxx' not found" or "Namespace 'xxx' not found. Did you mean 'yyy'?"
+    let message = &diagnostic.message;
+
+    // Extract namespace name from message
+    let start_quote = message.find('\'')?;
+    let rest = &message[start_quote + 1..];
+    let end_quote = rest.find('\'')?;
+    let namespace = &rest[..end_quote];
+
+    // Check for suggestion
+    let suggested = if message.contains("Did you mean") {
+        // Extract the suggested namespace
+        let did_you_mean_idx = message.find("Did you mean")? + "Did you mean '".len();
+        let rest_after = &message[did_you_mean_idx..];
+        let end_sug = rest_after.find('\'')?;
+        Some(&rest_after[..end_sug])
+    } else {
+        None
+    };
+
+    // Use the suggestion if available, otherwise use the original namespace
+    let import_ns = suggested.unwrap_or(namespace);
+    let new_text = format!(
+        "import * as {} from \"{}\"\n",
+        import_ns.replace([':', '.'], "_"),
+        import_ns
+    );
+
+    Some(CodeActionOrCommand::CodeAction(CodeAction {
+        title: format!("Add import for '{}'", import_ns),
+        kind: Some(CodeActionKind::QUICKFIX),
+        diagnostics: Some(vec![diagnostic.clone()]),
+        edit: Some(WorkspaceEdit {
+            changes: Some(
+                vec![(
+                    uri.clone(),
+                    vec![TextEdit {
+                        range: Range {
+                            start: Position {
+                                line: 0,
+                                character: 0,
+                            },
+                            end: Position {
+                                line: 0,
+                                character: 0,
+                            },
+                        },
+                        new_text,
+                    }],
+                )]
+                .into_iter()
+                .collect(),
+            ),
+            ..Default::default()
+        }),
+        is_preferred: Some(true),
+        ..Default::default()
+    }))
+}
+
+/// Create a Quick Fix for E504: Symbol not exported.
+/// Suggests using a wildcard import or lists available exports.
+fn create_symbol_export_fix(uri: &Url, diagnostic: &Diagnostic) -> Option<CodeActionOrCommand> {
+    // Message format: "Symbol 'xxx' is not exported by module 'yyy'. Available exports: a, b, c"
+    let message = &diagnostic.message;
+
+    // Extract module name
+    let module_marker = "module '";
+    let module_start = message.find(module_marker)? + module_marker.len();
+    let rest = &message[module_start..];
+    let module_end = rest.find('\'')?;
+    let module = &rest[..module_end];
+
+    // Create a wildcard import as a fix
+    let new_text = format!(
+        "import * as {} from \"{}\"\n",
+        module.replace([':', '.'], "_"),
+        module
+    );
+
+    Some(CodeActionOrCommand::CodeAction(CodeAction {
+        title: format!("Import all from '{}' (wildcard)", module),
+        kind: Some(CodeActionKind::QUICKFIX),
+        diagnostics: Some(vec![diagnostic.clone()]),
+        edit: Some(WorkspaceEdit {
+            changes: Some(
+                vec![(
+                    uri.clone(),
+                    vec![TextEdit {
+                        range: Range {
+                            start: Position {
+                                line: 0,
+                                character: 0,
+                            },
+                            end: Position {
+                                line: 0,
+                                character: 0,
+                            },
+                        },
+                        new_text,
+                    }],
+                )]
+                .into_iter()
+                .collect(),
+            ),
+            ..Default::default()
+        }),
+        is_preferred: Some(false), // Not preferred since wildcard imports are less precise
+        ..Default::default()
+    }))
+}
+
+/// Create an "Extract to Pattern" refactoring action.
+///
+/// This action is offered when the user selects a string literal that looks like
+/// a regex pattern. It extracts the string into a named Pattern declaration.
+fn create_extract_to_pattern_action(
+    uri: &Url,
+    range: Range,
+    text: &str,
+) -> Option<CodeActionOrCommand> {
+    // Extract the selected text from the document
+    let selected_text = get_text_at_range(text, range)?;
+
+    // Must be a string literal (starts/ends with quotes)
+    let trimmed = selected_text.trim();
+    if !trimmed.starts_with('"') || !trimmed.ends_with('"') {
+        return None;
+    }
+
+    // Get the inner content (without quotes)
+    let inner = &trimmed[1..trimmed.len() - 1];
+
+    // Check if it looks like a regex pattern
+    if !is_regex_pattern(inner) {
+        return None;
+    }
+
+    // Generate a pattern name from the content
+    let pattern_name = generate_pattern_name(inner);
+
+    // Find the best insertion point for the pattern declaration
+    let insert_pos = find_pattern_insertion_point(text);
+
+    // Create the Pattern declaration
+    let pattern_decl = format!("Pattern \"{}\" matches {}\n\n", pattern_name, trimmed);
+
+    // Create the workspace edit with two changes:
+    // 1. Insert the pattern declaration at the appropriate location
+    // 2. Optionally: Replace the inline string with a reference (for now, we just add the pattern)
+    Some(CodeActionOrCommand::CodeAction(CodeAction {
+        title: format!("Extract to Pattern '{}'", pattern_name),
+        kind: Some(CodeActionKind::REFACTOR_EXTRACT),
+        diagnostics: None,
+        edit: Some(WorkspaceEdit {
+            changes: Some(
+                vec![(
+                    uri.clone(),
+                    vec![TextEdit {
+                        range: Range {
+                            start: insert_pos,
+                            end: insert_pos,
+                        },
+                        new_text: pattern_decl,
+                    }],
+                )]
+                .into_iter()
+                .collect(),
+            ),
+            ..Default::default()
+        }),
+        is_preferred: Some(false),
+        ..Default::default()
+    }))
+}
+
+/// Extract text at a given LSP range from the document.
+fn get_text_at_range(text: &str, range: Range) -> Option<String> {
+    let lines: Vec<&str> = text.lines().collect();
+
+    let start_line = range.start.line as usize;
+    let end_line = range.end.line as usize;
+
+    if start_line >= lines.len() {
+        return None;
+    }
+
+    if start_line == end_line {
+        // Single line selection
+        let line = lines.get(start_line)?;
+        let start_char = range.start.character as usize;
+        let end_char = range.end.character as usize;
+
+        // Convert from UTF-16 to byte offsets (simplified - assumes ASCII/BMP)
+        if start_char > line.len() || end_char > line.len() {
+            return None;
+        }
+        Some(line[start_char..end_char].to_string())
+    } else {
+        // Multi-line selection
+        let mut result = String::new();
+
+        // First line
+        if let Some(first_line) = lines.get(start_line) {
+            let start_char = range.start.character as usize;
+            if start_char <= first_line.len() {
+                result.push_str(&first_line[start_char..]);
+            }
+        }
+
+        // Middle lines
+        for line_idx in (start_line + 1)..end_line {
+            if let Some(line) = lines.get(line_idx) {
+                result.push('\n');
+                result.push_str(line);
+            }
+        }
+
+        // Last line
+        if let Some(last_line) = lines.get(end_line) {
+            result.push('\n');
+            let end_char = range.end.character as usize;
+            if end_char <= last_line.len() {
+                result.push_str(&last_line[..end_char]);
+            }
+        }
+
+        Some(result)
+    }
+}
+
+/// Check if a string looks like a regex pattern.
+///
+/// Uses heuristics to detect common regex metacharacters and patterns.
+fn is_regex_pattern(s: &str) -> bool {
+    // Must have some content
+    if s.is_empty() || s.len() < 2 {
+        return false;
+    }
+
+    // Common regex metacharacters and patterns
+    let regex_indicators = [
+        "^",   // Start anchor
+        "$",   // End anchor
+        "\\d", // Digit
+        "\\w", // Word character
+        "\\s", // Whitespace
+        "\\b", // Word boundary
+        "[",   // Character class start
+        "]",   // Character class end
+        "*",   // Zero or more
+        "+",   // One or more
+        "?",   // Optional
+        "|",   // Alternation
+        "(",   // Group start
+        ")",   // Group end
+        "{",   // Quantifier start
+        "}",   // Quantifier end
+        ".",   // Any character (when not escaped)
+    ];
+
+    // Count how many regex indicators are present
+    let indicator_count = regex_indicators
+        .iter()
+        .filter(|ind| s.contains(*ind))
+        .count();
+
+    // Need at least 2 indicators to be confident it's a regex
+    indicator_count >= 2
+}
+
+/// Generate a pattern name from regex content.
+///
+/// Attempts to create a meaningful name based on the regex structure.
+fn generate_pattern_name(regex: &str) -> String {
+    // Common regex patterns with semantic names
+    // Order matters: more specific patterns first
+
+    // Email pattern: contains @ and escaped dot
+    if regex.contains("@") && regex.contains("\\.") {
+        return "Email".to_string();
+    }
+
+    // URL pattern: starts with http or contains ://
+    if regex.starts_with("^http") || regex.contains("://") {
+        return "Url".to_string();
+    }
+
+    // Date format: specific quantifiers like {4} for year
+    if regex.contains("\\d{4}") && regex.contains("-") {
+        return "DateFormat".to_string();
+    }
+
+    // Password: mixed case and digits
+    if regex.contains("[A-Z]") && regex.contains("[a-z]") && regex.contains("\\d") {
+        return "Password".to_string();
+    }
+
+    // Hex string: hex character class
+    if regex.contains("[A-Fa-f0-9]") || regex.contains("[0-9a-f]") {
+        return "HexString".to_string();
+    }
+
+    // Phone/numeric: digits with separators (checked after date format)
+    if regex.contains("\\d")
+        && (regex.contains("-") || regex.contains("\\."))
+        && !regex.contains("@")
+    {
+        if regex.len() > 10 {
+            return "PhoneNumber".to_string();
+        }
+        return "NumericId".to_string();
+    }
+
+    // Default: use a generic name
+    "CustomPattern".to_string()
+}
+
+/// Find the best position to insert a new Pattern declaration.
+///
+/// Strategy:
+/// 1. After existing Pattern declarations (to group patterns together)
+/// 2. Before the first Policy declaration
+/// 3. At the start of the file
+fn find_pattern_insertion_point(text: &str) -> Position {
+    let lines: Vec<&str> = text.lines().collect();
+    let mut last_pattern_line: Option<usize> = None;
+    let mut first_policy_line: Option<usize> = None;
+
+    for (i, line) in lines.iter().enumerate() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("Pattern ") {
+            last_pattern_line = Some(i);
+        }
+        if trimmed.starts_with("Policy ") && first_policy_line.is_none() {
+            first_policy_line = Some(i);
+        }
+    }
+
+    // Insert after the last pattern (on a new line after it)
+    if let Some(line) = last_pattern_line {
+        return Position {
+            line: (line + 1) as u32,
+            character: 0,
+        };
+    }
+
+    // Insert before the first policy
+    if let Some(line) = first_policy_line {
+        return Position {
+            line: line as u32,
+            character: 0,
+        };
+    }
+
+    // Insert at the start of the file
+    Position {
+        line: 0,
+        character: 0,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -416,6 +816,152 @@ mod tests {
                 assert_eq!(edits[0].range.start.character, 2);
             }
             _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn test_is_regex_pattern() {
+        // Should be detected as regex
+        assert!(is_regex_pattern("^hello$"));
+        assert!(is_regex_pattern("[a-z]+"));
+        assert!(is_regex_pattern("\\d{3}-\\d{4}"));
+        assert!(is_regex_pattern("(foo|bar)"));
+        assert!(is_regex_pattern(".*@.*\\.com"));
+
+        // Should NOT be detected as regex
+        assert!(!is_regex_pattern("hello"));
+        assert!(!is_regex_pattern("simple text"));
+        assert!(!is_regex_pattern(""));
+        assert!(!is_regex_pattern("a"));
+    }
+
+    #[test]
+    fn test_generate_pattern_name() {
+        assert_eq!(generate_pattern_name(".*@.*\\.com"), "Email");
+        assert_eq!(generate_pattern_name("^https?://"), "Url");
+        assert_eq!(generate_pattern_name("\\d{4}-\\d{2}-\\d{2}"), "DateFormat");
+        assert_eq!(generate_pattern_name("[A-Fa-f0-9]+"), "HexString");
+        assert_eq!(generate_pattern_name("^[a-z]+$"), "CustomPattern");
+    }
+
+    #[test]
+    fn test_find_pattern_insertion_point() {
+        // Empty file
+        assert_eq!(
+            find_pattern_insertion_point(""),
+            Position {
+                line: 0,
+                character: 0
+            }
+        );
+
+        // File with existing patterns
+        let text = r#"Pattern "Email" matches ".*@.*"
+Pattern "Phone" matches "\\d+"
+Policy "CheckEmail" when email matches Email"#;
+        let pos = find_pattern_insertion_point(text);
+        assert_eq!(pos.line, 2); // After the second Pattern line
+
+        // File with policy but no patterns
+        let text = r#"Entity "User"
+Policy "CheckUser" when user.valid"#;
+        let pos = find_pattern_insertion_point(text);
+        assert_eq!(pos.line, 1); // Before the Policy line
+    }
+
+    #[test]
+    fn test_extract_to_pattern_action() {
+        let uri = Url::parse("file:///test.sea").unwrap();
+        // Text with a regex pattern in a policy expression
+        let text = r#"Policy "ValidateEmail" when email matches "^[a-z]+@[a-z]+\\.[a-z]+$""#;
+
+        // Range selecting the regex string literal (from char 43 to 67 inclusive of quotes)
+        let range = Range {
+            start: Position {
+                line: 0,
+                character: 42,
+            },
+            end: Position {
+                line: 0,
+                character: 68,
+            },
+        };
+
+        let actions = provide_refactoring_actions(&uri, range, text);
+
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            CodeActionOrCommand::CodeAction(action) => {
+                assert!(action.title.contains("Extract to Pattern"));
+                assert_eq!(action.kind, Some(CodeActionKind::REFACTOR_EXTRACT));
+                let edit = action.edit.as_ref().unwrap();
+                let changes = edit.changes.as_ref().unwrap();
+                let edits = changes.get(&uri).unwrap();
+                assert!(edits[0].new_text.starts_with("Pattern "));
+            }
+            _ => panic!("Expected CodeAction"),
+        }
+    }
+
+    #[test]
+    fn test_no_extract_for_plain_string() {
+        let uri = Url::parse("file:///test.sea").unwrap();
+        let text = r#"Entity "User""#;
+
+        // Range selecting the plain string "User"
+        let range = Range {
+            start: Position {
+                line: 0,
+                character: 7,
+            },
+            end: Position {
+                line: 0,
+                character: 13,
+            },
+        };
+
+        let actions = provide_refactoring_actions(&uri, range, text);
+
+        // Should not offer Extract to Pattern for plain strings
+        assert!(actions.is_empty());
+    }
+
+    #[test]
+    fn test_e500_code_action() {
+        let uri = Url::parse("file:///test.sea").unwrap();
+        let diag = create_diagnostic("E500", "Namespace 'com.example' not found");
+        let text = "import com.example";
+
+        let actions = provide_code_actions(&uri, Range::default(), &[diag], text);
+
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            CodeActionOrCommand::CodeAction(action) => {
+                assert!(action.title.contains("Add import"));
+                assert!(action.title.contains("com.example"));
+            }
+            _ => panic!("Expected CodeAction"),
+        }
+    }
+
+    #[test]
+    fn test_e504_code_action() {
+        let uri = Url::parse("file:///test.sea").unwrap();
+        let diag = create_diagnostic(
+            "E504",
+            "Symbol 'Foo' is not exported by module 'com.example'. Available exports: Bar, Baz",
+        );
+        let text = "import { Foo } from com.example";
+
+        let actions = provide_code_actions(&uri, Range::default(), &[diag], text);
+
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            CodeActionOrCommand::CodeAction(action) => {
+                assert!(action.title.contains("Import all from"));
+                assert!(action.title.contains("com.example"));
+            }
+            _ => panic!("Expected CodeAction"),
         }
     }
 }

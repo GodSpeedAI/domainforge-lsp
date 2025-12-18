@@ -70,13 +70,15 @@ jobs:
         if: runner.os != 'Windows'
         run: |
           mkdir -p artifacts
-          cp domainforge-lsp/target/${{ matrix.target }}/release/domainforge-lsp artifacts/
+          cp domainforge-lsp/target/${{ matrix.target }}/release/domainforge-lsp artifacts/${{ matrix.artifact_name }}
+          cp domainforge-lsp/target/${{ matrix.target }}/release/domainforge-mcp artifacts/${{ matrix.artifact_name }}-mcp
 
       - name: Prepare artifact (Windows)
         if: runner.os == 'Windows'
         run: |
           mkdir artifacts
-          copy domainforge-lsp\target\${{ matrix.target }}\release\domainforge-lsp.exe artifacts\
+          copy domainforge-lsp\target\${{ matrix.target }}\release\domainforge-lsp.exe artifacts\${{ matrix.artifact_name }}.exe
+          copy domainforge-lsp\target\${{ matrix.target }}\release\domainforge-mcp.exe artifacts\${{ matrix.artifact_name }}-mcp.exe
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

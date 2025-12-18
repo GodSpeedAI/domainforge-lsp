@@ -562,122 +562,122 @@
 
 ### 8.1 Architecture Overview
 
-- [ ] **Component Topology**
+- [x] **Component Topology**
 
-  - [ ] Document the data flow: `VS Code Extension (Node/TS) → MCP Server (Rust) → Rust LSP (stdio)`
-  - [ ] Define MCP server as a separate binary target in `Cargo.toml`: `[[bin]] name = "domainforge-mcp"`
-  - [ ] Design the MCP server to spawn/connect to the LSP server per workspace
-  - [ ] Treat the LSP as the single source of truth for all language features
+  - [x] Document the data flow: `VS Code Extension (Node/TS) → MCP Server (Rust) → Rust LSP (stdio)`
+  - [x] Define MCP server as a separate binary target in `Cargo.toml`: `[[bin]] name = "domainforge-mcp"`
+  - [x] Design the MCP server to spawn/connect to the LSP server per workspace
+  - [x] Treat the LSP as the single source of truth for all language features
 
-- [ ] **Crate Structure**
-  - [ ] Create `src/mcp/mod.rs` for MCP server implementation
-  - [ ] Create `src/mcp/tools.rs` for exposed tool definitions
-  - [ ] Create `src/mcp/guardrails.rs` for security and rate limiting
-  - [ ] Create `src/mcp/transport.rs` for MCP protocol handling
+- [x] **Crate Structure**
+  - [x] Create `src/mcp/mod.rs` for MCP server implementation
+  - [x] Create `src/mcp/tools.rs` for exposed tool definitions
+  - [x] Create `src/mcp/guardrails.rs` for security and rate limiting
+  - [x] Create `src/mcp/transport.rs` for MCP protocol handling
 
 ### 8.2 MCP Tool Exposure
 
 > **Principle**: Expose read-only, safe operations. No auto-apply mutations without human confirmation.
 
-- [ ] **Diagnostics Tool**
+- [x] **Diagnostics Tool**
 
-  - [ ] Implement `domainforge/diagnostics` tool
-  - [ ] Accept: `uri: string` (file path)
-  - [ ] Return: Array of diagnostics with severity, message, range, code
-  - [ ] Rate limit: Max 10 requests/second per workspace
+  - [x] Implement `domainforge/diagnostics` tool
+  - [x] Accept: `uri: string` (file path)
+  - [x] Return: Array of diagnostics with severity, message, range, code
+  - [x] Rate limit: Max 10 requests/second per workspace
 
-- [ ] **Hover Tool**
+- [x] **Hover Tool**
 
-  - [ ] Implement `domainforge/hover` tool
-  - [ ] Accept: `uri: string`, `line: number`, `character: number`
-  - [ ] Reuse `HoverModel` builder from Phase 4.2
-  - [ ] Return: Hover content (markdown) or null
-  - [ ] Optionally return full `HoverModel` JSON for agent consumption
-  - [ ] Rate limit: Max 20 requests/second per workspace
+  - [x] Implement `domainforge/hover` tool
+  - [x] Accept: `uri: string`, `line: number`, `character: number`
+  - [x] Reuse `HoverModel` builder from Phase 4.2
+  - [x] Return: Hover content (markdown) or null
+  - [x] Optionally return full `HoverModel` JSON for agent consumption
+  - [x] Rate limit: Max 20 requests/second per workspace
 
-- [ ] **Definition Tool**
+- [x] **Definition Tool**
 
-  - [ ] Implement `domainforge/definition` tool
-  - [ ] Accept: `uri: string`, `line: number`, `character: number`
-  - [ ] Return: Location(s) of definition or empty array
-  - [ ] Rate limit: Max 10 requests/second per workspace
+  - [x] Implement `domainforge/definition` tool
+  - [x] Accept: `uri: string`, `line: number`, `character: number`
+  - [x] Return: Location(s) of definition or empty array
+  - [x] Rate limit: Max 10 requests/second per workspace
 
-- [ ] **References Tool**
+- [x] **References Tool**
 
-  - [ ] Implement `domainforge/references` tool
-  - [ ] Accept: `uri: string`, `line: number`, `character: number`, `includeDeclaration: boolean`
-  - [ ] Return: Array of locations
-  - [ ] Rate limit: Max 5 requests/second per workspace
+  - [x] Implement `domainforge/references` tool
+  - [x] Accept: `uri: string`, `line: number`, `character: number`, `includeDeclaration: boolean`
+  - [x] Return: Array of locations
+  - [x] Rate limit: Max 5 requests/second per workspace
 
-- [ ] **Rename Preview Tool**
+- [x] **Rename Preview Tool**
 
-  - [ ] Implement `domainforge/rename-preview` tool
-  - [ ] Accept: `uri: string`, `line: number`, `character: number`, `newName: string`
-  - [ ] Return: `WorkspaceEdit` preview (NOT applied automatically)
-  - [ ] Flag response with `requiresHumanApproval: true`
-  - [ ] Rate limit: Max 2 requests/second per workspace
+  - [x] Implement `domainforge/rename-preview` tool
+  - [x] Accept: `uri: string`, `line: number`, `character: number`, `newName: string`
+  - [x] Return: `WorkspaceEdit` preview (NOT applied automatically)
+  - [x] Flag response with `requiresHumanApproval: true`
+  - [x] Rate limit: Max 2 requests/second per workspace
 
-- [ ] **Code Actions Tool (Read-Only)**
-  - [ ] Implement `domainforge/code-actions` tool
-  - [ ] Accept: `uri: string`, `range: Range`, `context: CodeActionContext`
-  - [ ] Return: Array of available code actions with titles and kinds
-  - [ ] Do NOT auto-apply; return `WorkspaceEdit` preview for each action
-  - [ ] Flag response with `requiresHumanApproval: true`
-  - [ ] Rate limit: Max 5 requests/second per workspace
+- [x] **Code Actions Tool (Read-Only)**
+  - [x] Implement `domainforge/code-actions` tool
+  - [x] Accept: `uri: string`, `range: Range`, `context: CodeActionContext`
+  - [x] Return: Array of available code actions with titles and kinds
+  - [x] Do NOT auto-apply; return `WorkspaceEdit` preview for each action
+  - [x] Flag response with `requiresHumanApproval: true`
+  - [x] Rate limit: Max 5 requests/second per workspace
 
 ### 8.3 Guardrails & Security
 
-- [ ] **Path Allowlists**
+- [x] **Path Allowlists**
 
-  - [ ] Accept workspace root(s) at MCP server initialization
-  - [ ] Validate all `uri` parameters against allowlist before processing
-  - [ ] Reject requests for files outside allowed paths with clear error
-  - [ ] Support glob patterns for fine-grained access control
+  - [x] Accept workspace root(s) at MCP server initialization
+  - [x] Validate all `uri` parameters against allowlist before processing
+  - [x] Reject requests for files outside allowed paths with clear error
+  - [x] Support glob patterns for fine-grained access control
 
-- [ ] **Repo-Scoped Access**
+- [x] **Repo-Scoped Access**
 
-  - [ ] Bind MCP server instance to specific workspace/repository
-  - [ ] Prevent cross-workspace information leakage
-  - [ ] Include workspace identifier in all tool responses
+  - [x] Bind MCP server instance to specific workspace/repository
+  - [x] Prevent cross-workspace information leakage
+  - [x] Include workspace identifier in all tool responses
 
-- [ ] **Rate Limiting**
+- [x] **Rate Limiting**
 
-  - [ ] Implement token bucket rate limiter per tool type
-  - [ ] Configure limits via environment variables or config file
-  - [ ] Return `429 Too Many Requests` equivalent for exceeded limits
-  - [ ] Log rate limit violations for monitoring
+  - [x] Implement token bucket rate limiter per tool type
+  - [x] Configure limits via environment variables or config file
+  - [x] Return `429 Too Many Requests` equivalent for exceeded limits
+  - [x] Log rate limit violations for monitoring
 
-- [ ] **Human-in-the-Loop Apply**
+- [x] **Human-in-the-Loop Apply**
 
-  - [ ] Never auto-apply `WorkspaceEdit` mutations
-  - [ ] Return edits as preview data with `requiresHumanApproval: true`
-  - [ ] Document the expected client-side confirmation flow
-  - [ ] Optionally implement `domainforge/apply-edit` tool gated by explicit user confirmation token
+  - [x] Never auto-apply `WorkspaceEdit` mutations
+  - [x] Return edits as preview data with `requiresHumanApproval: true`
+  - [x] Document the expected client-side confirmation flow
+  - [x] Optionally implement `domainforge/apply-edit` tool gated by explicit user confirmation token
 
-- [ ] **Audit Logging**
-  - [ ] Log all MCP tool invocations with timestamp, tool name, parameters (sanitized)
-  - [ ] Log all denied requests with reason
-  - [ ] Support configurable log destinations (stderr, file, external service)
+- [x] **Audit Logging**
+  - [x] Log all MCP tool invocations with timestamp, tool name, parameters (sanitized)
+  - [x] Log all denied requests with reason
+  - [x] Support configurable log destinations (stderr, file, external service)
 
 ### 8.4 MCP Server Entry Point
 
-- [ ] **Binary Configuration**
+- [x] **Binary Configuration**
 
-  - [ ] Add `src/mcp/main.rs` as entry point for `domainforge-mcp` binary
-  - [ ] Accept `--workspace-root` argument for path allowlist initialization
-  - [ ] Accept `--lsp-path` argument to locate the LSP server binary
-  - [ ] Support `--config` for JSON/TOML configuration file
+  - [x] Add `src/mcp/main.rs` as entry point for `domainforge-mcp` binary
+  - [x] Accept `--workspace-root` argument for path allowlist initialization
+  - [x] Accept `--lsp-path` argument to locate the LSP server binary
+  - [x] Support `--config` for JSON/TOML configuration file
 
-- [ ] **LSP Server Management**
+- [x] **LSP Server Management**
 
-  - [ ] Spawn LSP server as child process with stdio transport
-  - [ ] Implement reconnection logic on LSP server crash
-  - [ ] Forward initialization params from MCP config to LSP
+  - [x] Spawn LSP server as child process with stdio transport
+  - [x] Implement reconnection logic on LSP server crash
+  - [x] Forward initialization params from MCP config to LSP
 
-- [ ] **MCP Protocol Transport**
-  - [ ] Implement MCP protocol over stdio (for CLI/agent integration)
-  - [ ] Support HTTP SSE transport for web-based agents
-  - [ ] Handle MCP `initialize`, `tools/list`, `tools/call` methods
+- [x] **MCP Protocol Transport**
+  - [x] Implement MCP protocol over stdio (for CLI/agent integration)
+  - [x] Support HTTP SSE transport for web-based agents
+  - [x] Handle MCP `initialize`, `tools/list`, `tools/call` methods
 
 ### 8.5 VS Code Extension Integration
 
@@ -694,25 +694,25 @@
 
 ### 8.6 Unit Tests for Phase 8
 
-- [ ] **Test Tool Responses**
+- [x] **Test Tool Responses**
 
-  - [ ] Test `domainforge/diagnostics` returns correct format
-  - [ ] Test `domainforge/hover` returns markdown content
-  - [ ] Test `domainforge/definition` returns valid locations
-  - [ ] Test `domainforge/references` includes declaration when requested
-  - [ ] Test `domainforge/rename-preview` returns non-applied edit
-  - [ ] Test `domainforge/code-actions` returns edits with approval flag
+  - [x] Test `domainforge/diagnostics` returns correct format
+  - [x] Test `domainforge/hover` returns markdown content
+  - [x] Test `domainforge/definition` returns valid locations
+  - [x] Test `domainforge/references` includes declaration when requested
+  - [x] Test `domainforge/rename-preview` returns non-applied edit
+  - [x] Test `domainforge/code-actions` returns edits with approval flag
 
-- [ ] **Test Guardrails**
+- [x] **Test Guardrails**
 
-  - [ ] Test path allowlist rejects out-of-workspace files
-  - [ ] Test rate limiter correctly throttles requests
-  - [ ] Test denied requests are logged
+  - [x] Test path allowlist rejects out-of-workspace files
+  - [x] Test rate limiter correctly throttles requests
+  - [x] Test denied requests are logged
 
-- [ ] **Test LSP Integration**
-  - [ ] Test MCP server correctly forwards requests to LSP
-  - [ ] Test MCP server handles LSP server restart gracefully
-  - [ ] Test workspace scoping prevents cross-workspace access
+- [x] **Test LSP Integration**
+  - [x] Test MCP server correctly forwards requests to LSP
+  - [x] Test MCP server handles LSP server restart gracefully
+  - [x] Test workspace scoping prevents cross-workspace access
 
 ---
 

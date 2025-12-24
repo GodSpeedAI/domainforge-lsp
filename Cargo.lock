@@ -426,7 +426,7 @@ dependencies = [
 
 [[package]]
 name = "domainforge-lsp"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "anyhow",
  "blake3",
@@ -1369,7 +1369,7 @@ checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
 
 [[package]]
 name = "sea-core"
-version = "0.6.2"
+version = "0.7.1"
 dependencies = [
  "anyhow",
  "chrono",

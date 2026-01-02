@@ -16,6 +16,7 @@ use tower_lsp::{Client, LanguageServer};
 
 use lru::LruCache;
 
+use crate::ast_json::{source_to_ast_json, AstJsonParams, AstJsonResponse};
 use crate::completion;
 use crate::diagnostics::parse_error_to_diagnostic;
 use crate::formatting::{extract_format_options, format_document, LspFormatConfig};
@@ -289,6 +290,53 @@ impl Backend {
             .await
             .put(key.clone(), markdown.clone());
         markdown
+    }
+
+    /// Get AST JSON for a document.
+    ///
+    /// This is a custom LSP request handler for `sea/astJson`.
+    /// Returns the AST JSON conforming to ast-v3.schema.json.
+    pub async fn get_ast_json(&self, params: AstJsonParams) -> Result<AstJsonResponse> {
+        let uri = params.uri;
+
+        log::info!("AST JSON requested for: {}", uri);
+
+        // Get the document content
+        let state = {
+            let documents = self.documents.read().await;
+            documents.get(&uri).cloned()
+        };
+
+        let Some(state) = state else {
+            log::warn!("Document not found for AST JSON: {}", uri);
+            return Ok(AstJsonResponse {
+                ast_json: String::new(),
+                version: 0,
+                success: false,
+                error: Some(format!("Document not found: {}", uri)),
+            });
+        };
+
+        match source_to_ast_json(&state.text, params.pretty) {
+            Ok(ast_json) => {
+                log::debug!("AST JSON generated successfully for: {}", uri);
+                Ok(AstJsonResponse {
+                    ast_json,
+                    version: state.version,
+                    success: true,
+                    error: None,
+                })
+            }
+            Err(e) => {
+                log::warn!("AST JSON generation failed for {}: {}", uri, e);
+                Ok(AstJsonResponse {
+                    ast_json: String::new(),
+                    version: state.version,
+                    success: false,
+                    error: Some(e),
+                })
+            }
+        }
     }
 }
 

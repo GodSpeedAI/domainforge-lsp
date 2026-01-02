@@ -16,6 +16,7 @@ async fn main() {
 
     let (service, socket) = LspService::build(Backend::new)
         .custom_method("textDocument/hoverPlus", Backend::hover_plus)
+        .custom_method("sea/astJson", Backend::get_ast_json)
         .finish();
     Server::new(stdin, stdout, socket).serve(service).await;
 }

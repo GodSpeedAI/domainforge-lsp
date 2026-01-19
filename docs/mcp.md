@@ -26,7 +26,7 @@ Retrieves hover information for a symbol at a specific location.
   - `uri` (string): The file URI (e.g., `file:///path/to/project/main.sea`)
   - `line` (integer): 0-based line number
   - `character` (integer): 0-based character offset
-- **Returns**: Markdown content describing the symbol (type, definition, relations).
+- **Returns**: `string` — Markdown-formatted content describing the symbol (type, definition, relations). The response is a plain Markdown string that clients can render directly.
 
 ## Usage
 
@@ -45,7 +45,7 @@ You normally don't run this manually; it is configured as a server in your AI ag
 **Command Line Arguments**:
 
 - `--lsp-path <PATH>`: Explicit path to the `domainforge-lsp` binary. If omitted, defaults to looking for `domainforge-lsp` in your `$PATH`.
-- `--workspace-root <PATH>`: (Optional) The root directory of the workspace to initialize the LSP with.
+- `--workspace-root <PATH>`: (Optional) The root directory of the workspace to initialize the LSP with. **Default behavior**: If omitted, the current working directory (CWD) is used. If CWD cannot be determined (rare edge case), initialization proceeds with an empty allowed path list, which may restrict file access in guardrails.
 
 **Example Configuration (Claude Desktop)**:
 

@@ -9,13 +9,12 @@ use tower_lsp::lsp_types::*;
 ///
 /// Currently declares:
 /// - Text document sync (open/change/close)
-/// - Document formatting (Phase 2)
-///
-/// Future phases will add:
-/// - Completion
-/// - Hover
+/// - Document formatting
+/// - Completion (with trigger characters: `"`, `@`, `.`)
+/// - Hover information
 /// - Go to definition
 /// - Find references
+/// - Code actions (Quick Fixes)
 pub fn server_capabilities() -> ServerCapabilities {
     ServerCapabilities {
         // Full document sync - receive entire document on each change

@@ -90,14 +90,23 @@ Entity "Test" {
         }
         other => {
             // Check that the error string contains location information
-            // e.g. "at line 5, column 10" or "5:10"
+            // e.g. "at line 5, column 10" or "5:10:" format
             let error_str = other.to_string();
-            let has_location = error_str.contains("line") && error_str.contains("column")
-                || error_str.contains(':') && error_str.chars().any(|c| c.is_numeric());
+            
+            // Require location information pattern: either explicit "line X" and "column Y"
+            // or a line:col format like "2:5:"
+            let has_explicit_line_col = error_str.contains("line") && error_str.contains("column");
+            let has_colon_format = {
+                // Look for patterns like ":2:" or ":10:" (line numbers surrounded by colons)
+                let re_pattern = error_str
+                    .split(':')
+                    .any(|s| s.chars().all(|c| c.is_ascii_digit()) && !s.is_empty());
+                re_pattern
+            };
 
             assert!(
-                has_location,
-                "Error should contain location information. Got: {}",
+                has_explicit_line_col || has_colon_format,
+                "Error MUST contain location information (line/column or line:col format). Got: {}",
                 error_str
             );
         }

@@ -576,3 +576,80 @@ architecture_models:
       - server_lifecycle_management
       - configuration_forwarding
 ```
+
+---
+
+## 13. Semantic Pack Integration
+
+```yaml
+overview: |
+  The LSP loads semantic packs from workspace configuration and uses them to
+  provide domain-aware diagnostics, completion, and hover enrichment. All
+  validation logic lives in sea-core; the LSP is a protocol adapter that
+  translates sea-core types into LSP messages.
+
+semantic_modules:
+  semantic_config:
+    file: src/semantic_config.rs
+    types: [SemanticConfig, SemanticPackConfig]
+    role: |
+      Deserialises the `domainforge.semantic` configuration section from
+      workspace settings. Converts config values into
+      `sea_core::semantic_pack::ValidationOptions` for the pack loader.
+
+  semantic_pack_loader:
+    file: src/semantic_pack_loader.rs
+    functions: [load_pack_from_path, load_pack_set, verify_expected_hash]
+    role: |
+      Reads semantic pack JSON files from disk, verifies content hashes and
+      signatures, checks schema version compatibility, and merges multiple
+      packs into a unified PackSet via `sea_core::semantic_pack::merge_packs`.
+
+  semantic_diagnostics:
+    file: src/semantic_diagnostics.rs
+    functions: [semantic_diagnostic_to_lsp, create_pack_diagnostic, map_severity]
+    role: |
+      Converts `sea_core::semantic_pack::SemanticDiagnostic` instances into
+      LSP `Diagnostic` objects. Produces file-level pack-load diagnostics
+      when the pack subsystem is degraded.
+
+  semantic_completion:
+    file: src/semantic_completion.rs
+    function: get_semantic_completions
+    role: |
+      Generates LSP `CompletionItem` lists from active pack concepts.
+      Filters by prefix, excludes proposed/rejected concepts, maps concept
+      kinds to CompletionItemKind, and sorts by status rank.
+
+  semantic_index:
+    file: src/semantic_index.rs
+    type: SemanticIndex
+    role: |
+      Builds a lightweight symbol index from the Pest AST. Tracks
+      definitions, references, import prefixes, and flow declarations.
+      Used by navigation, hover, and the standard completion provider.
+      Not pack-specific, but provides the symbol-resolution layer that
+      pack-driven features build upon.
+
+backend_integration:
+  state_fields:
+    semantic_pack_set: "RwLock<Option<PackSet>> — the loaded and merged pack set"
+    semantic_pack_errors: "RwLock<Vec<SemanticDiagnostic>> — errors from the most recent load"
+  load_triggers:
+    - "initialize (server startup)"
+    - "workspace/didChangeConfiguration (config update)"
+  validation_sequence:
+    - "Parse document with sea-core (if parse fails, stop)"
+    - "If semantic enabled and pack_errors is empty, call validate_graph_with_pack"
+    - "Convert resulting SemanticDiagnostic list to LSP Diagnostic via semantic_diagnostic_to_lsp"
+    - "Publish combined parse + semantic diagnostics"
+  completion_sequence:
+    - "Run standard completion from graph + semantic index"
+    - "If semantic enabled and pack available, append pack-driven completions"
+  hover_sequence:
+    - "Resolve symbol via SemanticIndex"
+    - "Build HoverModel with graph-derived facts (namespace, flows, unit, etc.)"
+    - "Pack concept metadata enriches the hover when the symbol matches a pack concept"
+
+detailed_docs: docs/lsp-semantic-adapters.md
+```

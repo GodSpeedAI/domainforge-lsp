@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use std::num::NonZeroUsize;
 
 use sea_core::parse_to_graph;
+use sea_core::semantic_pack::{PackSet, SemanticDiagnostic, validate_graph_with_pack};
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 use tokio::sync::RwLock;
@@ -25,7 +26,12 @@ use crate::hover::symbol_resolver::{build_hover_model, HoverBuildInput};
 use crate::hover::{DetailLevel, HoverPlusParams, HoverPlusResponse};
 use crate::line_index::LineIndex;
 use crate::navigation;
+use crate::semantic_config::SemanticConfig;
+use crate::semantic_diagnostics::{
+    create_pack_diagnostic, semantic_diagnostic_to_lsp,
+};
 use crate::semantic_index::SemanticIndex;
+use crate::semantic_pack_loader;
 
 /// Server-side configuration for DomainForge.
 ///
@@ -37,6 +43,9 @@ pub struct DomainForgeConfig {
     /// Formatting configuration
     #[serde(default)]
     pub formatting: FormattingConfig,
+    /// Semantic pack configuration
+    #[serde(default)]
+    pub semantic: SemanticConfig,
 }
 
 /// Formatting-specific configuration.
@@ -145,6 +154,10 @@ pub struct Backend {
     documents: RwLock<HashMap<Url, DocumentState>>,
     /// Server configuration, updated via workspace/didChangeConfiguration
     config: RwLock<DomainForgeConfig>,
+    /// Loaded and merged semantic pack set
+    semantic_pack_set: RwLock<Option<PackSet>>,
+    /// Errors encountered loading semantic packs
+    semantic_pack_errors: RwLock<Vec<SemanticDiagnostic>>,
 
     hover_model_cache: Mutex<LruCache<HoverCacheKey, crate::hover::HoverModel>>,
     hover_markdown_cache: Mutex<LruCache<HoverCacheKey, String>>,
@@ -157,6 +170,8 @@ impl Backend {
             client,
             documents: RwLock::new(HashMap::new()),
             config: RwLock::new(DomainForgeConfig::default()),
+            semantic_pack_set: RwLock::new(None),
+            semantic_pack_errors: RwLock::new(vec![]),
             hover_model_cache: Mutex::new(LruCache::new(
                 NonZeroUsize::new(512).expect("non-zero hover model cache size"),
             )),
@@ -172,14 +187,11 @@ impl Backend {
     /// the error was already captured during DocumentState creation.
     async fn validate_document(&self, uri: Url, state: &DocumentState) {
         let diagnostics = if state.graph.is_some() {
-            // Parse succeeded - no diagnostics
             log::debug!("Document validated successfully: {}", uri);
             vec![]
         } else {
-            // Parse failed - re-parse to get the error for diagnostics
-            // (We don't store the error in DocumentState to keep it simple)
             match parse_to_graph(&state.text) {
-                Ok(_) => vec![], // Shouldn't happen, but handle gracefully
+                Ok(_) => vec![],
                 Err(parse_error) => {
                     log::debug!("Parse error in {}: {:?}", uri, parse_error);
                     vec![parse_error_to_diagnostic(&parse_error)]
@@ -187,8 +199,66 @@ impl Backend {
             }
         };
 
+        let parse_ok = diagnostics.is_empty();
+        let mut all_diagnostics = diagnostics;
+
+        if parse_ok {
+            let (semantic_enabled, pack_set_opt, pack_errors) = {
+                let config = self.config.read().await;
+                let packs = self.semantic_pack_set.read().await;
+                let errors = self.semantic_pack_errors.read().await;
+                (
+                    config.semantic.enabled,
+                    packs.clone(),
+                    errors.clone(),
+                )
+            };
+
+            if semantic_enabled {
+                if !pack_errors.is_empty() {
+                    for err in &pack_errors {
+                        all_diagnostics.push(create_pack_diagnostic(
+                            &err.message,
+                            err.code.as_str(),
+                        ));
+                    }
+                } else if let Some(ref pack_set) = pack_set_opt {
+                    if let Some(ref pack_ref) = pack_set.packs.first() {
+                        let config = self.config.read().await;
+                        let options = config.semantic.to_validation_options();
+
+                        let pack_result = match std::fs::read_to_string(&pack_ref.path_or_uri) {
+                            Ok(content) => match serde_json::from_str::<sea_core::semantic_pack::SemanticPack>(&content) {
+                                Ok(pack) => {
+                                    let source_uri = uri.to_string();
+                                    Some(validate_graph_with_pack(&pack, &source_uri, &options))
+                                }
+                                Err(e) => {
+                                    log::warn!("Failed to parse pack for validation: {}", e);
+                                    None
+                                }
+                            },
+                            Err(e) => {
+                                log::warn!("Failed to read pack for validation: {}", e);
+                                None
+                            }
+                        };
+
+                        if let Some(result) = pack_result {
+                            for diag in &result.diagnostics {
+                                all_diagnostics.push(semantic_diagnostic_to_lsp(
+                                    diag,
+                                    &state.line_index,
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         self.client
-            .publish_diagnostics(uri, diagnostics, None)
+            .publish_diagnostics(uri, all_diagnostics, None)
             .await;
     }
 
@@ -206,8 +276,46 @@ impl Backend {
         blake3::hash(&bytes).to_hex().to_string()
     }
 
-    pub async fn hover_plus(&self, params: HoverPlusParams) -> Result<Option<HoverPlusResponse>> {
-        let uri = params.text_document.uri;
+    async fn load_semantic_packs(&self) {
+        let config = self.config.read().await;
+        if !config.semantic.enabled || config.semantic.packs.is_empty() {
+            let mut packs = self.semantic_pack_set.write().await;
+            *packs = None;
+            let mut errors = self.semantic_pack_errors.write().await;
+            errors.clear();
+            return;
+        }
+
+        let options = config.semantic.to_validation_options();
+        let pack_configs = config.semantic.packs.clone();
+        drop(config);
+
+        match semantic_pack_loader::load_pack_set(&pack_configs, &options) {
+            Ok(pack_set) => {
+                log::info!(
+                    "Loaded semantic pack set with {} pack(s), hash={}",
+                    pack_set.packs.len(),
+                    pack_set.merged_pack_hash
+                );
+                let mut packs = self.semantic_pack_set.write().await;
+                *packs = Some(pack_set);
+                let mut errors = self.semantic_pack_errors.write().await;
+                errors.clear();
+            }
+            Err(errs) => {
+                log::warn!("Failed to load semantic packs: {} error(s)", errs.len());
+                for e in &errs {
+                    log::warn!("  - {} ({})", e.message, e.code.as_str());
+                }
+                let mut packs = self.semantic_pack_set.write().await;
+                *packs = None;
+                let mut errors = self.semantic_pack_errors.write().await;
+                *errors = errs;
+            }
+        }
+    }
+
+    pub async fn hover_plus(&self, params: HoverPlusParams) -> Result<Option<HoverPlusResponse>> {        let uri = params.text_document.uri;
         let detail_level = DetailLevel::parse(params.max_detail_level.as_deref());
 
         let Some(state) = ({
@@ -407,9 +515,19 @@ impl HoverCacheKey {
     }
 }
 
+fn extract_prefix_at(source: &str, offset: usize) -> String {
+    let start = source[..offset.min(source.len())]
+        .rfind(|c: char| c.is_whitespace() || c == '"' || c == '\'')
+        .map(|p| p + 1)
+        .unwrap_or(0);
+    source[start..offset.min(source.len())].to_string()
+}
+
 #[tower_lsp::async_trait]
 impl LanguageServer for Backend {
     async fn initialize(&self, _: InitializeParams) -> Result<InitializeResult> {
+        self.load_semantic_packs().await;
+
         Ok(InitializeResult {
             server_info: Some(ServerInfo {
                 name: "domainforge-lsp".to_string(),
@@ -513,7 +631,6 @@ impl LanguageServer for Backend {
     async fn did_change_configuration(&self, params: DidChangeConfigurationParams) {
         log::info!("Configuration changed");
 
-        // Try to extract the domainforge configuration section
         if let Some(settings) = params.settings.as_object() {
             if let Some(domainforge) = settings.get("domainforge") {
                 match serde_json::from_value::<DomainForgeConfig>(domainforge.clone()) {
@@ -526,6 +643,23 @@ impl LanguageServer for Backend {
                         log::warn!("Failed to parse configuration: {}", e);
                     }
                 }
+            }
+        }
+
+        self.load_semantic_packs().await;
+
+        let uris: Vec<Url> = {
+            let documents = self.documents.read().await;
+            documents.keys().cloned().collect()
+        };
+
+        for uri in uris {
+            let state = {
+                let documents = self.documents.read().await;
+                documents.get(&uri).cloned()
+            };
+            if let Some(state) = state {
+                self.validate_document(uri, &state).await;
             }
         }
     }
@@ -583,13 +717,61 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
 
-        let response = completion::completion(
+        let mut response = completion::completion(
             &state.text,
             &state.line_index,
             position,
             state.graph.as_ref(),
             state.semantic_index.as_ref(),
         );
+
+        let (semantic_enabled, pack_set_opt, pack_errors) = {
+            let config = self.config.read().await;
+            let packs = self.semantic_pack_set.read().await;
+            let errors = self.semantic_pack_errors.read().await;
+            (
+                config.semantic.enabled,
+                packs.clone(),
+                errors.clone(),
+            )
+        };
+
+        if semantic_enabled && pack_errors.is_empty() {
+            if let Some(ref pack_set) = pack_set_opt {
+                if let Some(ref pack_ref) = pack_set.packs.first() {
+                    if let Ok(content) = std::fs::read_to_string(&pack_ref.path_or_uri) {
+                        if let Ok(pack) = serde_json::from_str::<sea_core::semantic_pack::SemanticPack>(&content) {
+                            let offset = state.line_index.offset_of(position);
+                            let prefix = offset
+                                .map(|o| extract_prefix_at(&state.text, o))
+                                .unwrap_or_default();
+
+                            let semantic_items =
+                                crate::semantic_completion::get_semantic_completions(
+                                    &pack,
+                                    &prefix,
+                                    false,
+                                );
+
+                            match &mut response {
+                                Some(CompletionResponse::Array(items)) => {
+                                    items.extend(semantic_items);
+                                }
+                                Some(CompletionResponse::List(list)) => {
+                                    list.items.extend(semantic_items);
+                                }
+                                None => {
+                                    if !semantic_items.is_empty() {
+                                        response = Some(CompletionResponse::Array(semantic_items));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         Ok(response)
     }
 

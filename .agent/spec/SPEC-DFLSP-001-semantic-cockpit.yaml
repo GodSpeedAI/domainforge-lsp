@@ -1,0 +1,2025 @@
+# =============================================================================
+# SPEC-DFLSP-001 — DomainForge LSP as Semantic Inspection & Affordance Surface
+# =============================================================================
+# Conforms to .agent/specs/AGENT_SPEC_TEMPLATE.yaml (schema agent.spec 1.0).
+#
+# EVIDENCE DISCIPLINE
+#   observed  = read in source/tests/command output during this investigation
+#   declared  = stated by repository prose (may contradict implementation)
+#   inferred  = derived from observed facts, not directly read
+#   proposed  = this spec's design choice, not yet in any repository
+#   unknown   = not established
+# Every non-obvious factual assertion below is tagged.
+# =============================================================================
+
+schema: agent.spec
+schema_version: "1.0"
+
+metadata:
+  id: "SPEC-DFLSP-001"
+  title: "DomainForge LSP — Layered Semantic Inspection, Navigation, and Governed Affordance Surface"
+  status: "draft"
+  version: "0.1.0"
+  created: "2026-09-03"
+  scope: >-
+    Primarily the domainforge-lsp repository: the portable LSP server binary,
+    its internal semantic service layers, its adapters to DomainForge
+    (domainforge-core), RealityTrace (sxr), and the CEP-implementing settlement
+    surface, plus the boundary contract it offers the VS Code client.
+    Because domainforge, sxr, domainforge-lsp and domainforge-vsc-extension
+    share a single maintainer, the enabling changes in domainforge (DF-C1a,
+    DF-C3) and sxr (SXR-C1) are sequenced as first-class tasks in the
+    accompanying plan rather than treated as external prerequisites. They
+    remain specified here as CONTRACTS, with their authority boundaries intact:
+    common ownership changes who schedules the work, not which system is
+    authoritative for what.
+  purpose: >-
+    Convert domainforge-lsp from a currently non-compiling, single-file,
+    syntax-oriented language server into the interactive projection through
+    which an observer inspects declared meaning, its governance and
+    dependencies, its relationship to observed reality and evaluation
+    evidence, and the next governed action — without collapsing
+    representation, observation, evaluation, and authority into one system.
+  owner: "DomainForge tooling"
+
+  normative_language: "RFC 2119"
+  normative_keywords:
+    MUST: "Conformance depends on it."
+    MUST_NOT: "Conformance is destroyed by it."
+    SHOULD: "Strongly expected; deviation must be recorded with rationale."
+    MAY: "Genuinely optional."
+
+  implementation_defined_meaning: >-
+    A choice this spec deliberately leaves to the implementer, constrained by
+    a stated outcome. The implementer MUST record the choice; the outcome
+    remains normative.
+
+# -----------------------------------------------------------------------------
+# 1. SOURCES
+# -----------------------------------------------------------------------------
+sources:
+  primary_brief:
+    - "Operator task brief (2026-09-03): modernize domainforge-lsp into a semantic cockpit."
+
+  evidence_source:
+    - path: "/home/sprime01/projects/domainforge-lsp"
+      commit: "73ebdaa (2026-08-26) feat: integrate semantic pack support into LSP"
+      note: "observed — 6,899 LOC Rust, tower-lsp 0.20, single-crate."
+    - path: "/home/sprime01/projects/domainforge"
+      commit: "2fdbe48 (2026-09-02)"
+      note: "observed — domainforge-core v0.16.0; crate renamed from sea-core at 9d9e209 (2026-06-20)."
+    - path: "/home/sprime01/projects/sxr"
+      commit: "c588968 (2026-09-02)"
+      note: "observed — RealityTrace / Semantic Exhaust Runtime; crates sxr-core, sxr-ledger, sxr-git, sxr-df, sxr-verify, sxr-cli, ablation."
+    - path: "/home/sprime01/projects/cep"
+      commit: "cadc9d7 (2026-09-02)"
+      note: "observed — Python spec + conformance corpus repo; CEP-0000..CEP-0010."
+    - path: "/home/sprime01/projects/domainforge-vsc-extension"
+      commit: "64bc8fa (2026-02-01)"
+      note: "observed — TypeScript VS Code client; last touched 7 months before the LSP."
+
+  existing_implementation:
+    build_status: >-
+      observed — `cargo check --offline` in domainforge-lsp FAILS at manifest
+      resolution: `sea-core = { path = "../domainforge/sea-core" }` and that
+      directory does not exist. DomainForge renamed the crate to
+      `domainforge-core` on 2026-06-20 (commit 9d9e209). Cargo.lock still pins
+      `sea-core 0.10.0`; current is `domainforge-core 0.16.0`.
+    consequence: >-
+      inferred — every capability claim about the current LSP is unverifiable
+      by execution. The 2026-08-26 "semantic pack support" commit was made
+      against a repository that cannot compile.
+
+# -----------------------------------------------------------------------------
+# 2. SPEC FRAME
+# -----------------------------------------------------------------------------
+spec_frame:
+  quality_gate_questions:
+    - "What is the canonical source of .sea syntax and semantics for the LSP, and is any of it duplicated?"
+    - "What is the stable identity of a declaration across source, pack, trace, and evaluation surfaces?"
+    - "Which integrations are fast enough for an editor hot path, and what happens when each is absent?"
+    - "How is a semantic error distinguished from evidence of real-world divergence?"
+    - "For each surfaced fact, what governed next action does it make affordable, and what gates that action?"
+    - "Which upstream (domainforge / sxr) contracts must exist before an LSP capability is safe to build?"
+
+  proof_loop:
+    - "Bind to domainforge-core as a versioned library; prove no grammar or semantic rule is reimplemented in the LSP."
+    - "Prove position -> DeclarationKey -> position round-trips are stable across formatting, rename, and file moves."
+    - "Prove every external integration has a typed-unavailable path exercised by a test with the integration absent."
+    - "Prove no passive LSP request (hover, diagnostics, inlay) performs a write, spawn, or network call."
+    - "Prove every offered action declares and enforces its gate state before appearing as available."
+
+# -----------------------------------------------------------------------------
+# 3. PROBLEM STATEMENT
+# -----------------------------------------------------------------------------
+problem_statement:
+  system_name: "domainforge-lsp"
+
+  problem_summary: >-
+    domainforge-lsp is a broken, single-layer syntax server. It does not
+    compile against current DomainForge. Its whole model of a workspace is one
+    document at a time. Meanwhile DomainForge has grown a complete, resolved,
+    position-free, hash-identified semantic envelope with cross-module import
+    resolution and reference resolution; RealityTrace has grown a 27-record
+    append-only ledger keyed by a declaration key structurally identical to
+    DomainForge's; and CEP has fixed the epistemic distinctions both rely on.
+    The editor is the one place a human touches all of this, and it currently
+    projects none of it.
+
+  job_to_be_done:
+    actor: "An engineer or agent editing a .sea model in an LSP-capable editor."
+    job: >-
+      While reading or changing a declaration, understand what it means, what
+      governs it, what depends on it, how it has changed, what reality has been
+      observed about it, what evidence exists, whether expectation and
+      observation agree, and what governed action is available next — without
+      leaving the editor and without being misled about the epistemic status
+      of any of it.
+    done_when: >-
+      The engineer can move from a cursor position to a stable semantic
+      identity, and from that identity to governance, dependency, evolution,
+      observation, evidence, and evaluation projections, each labelled with its
+      source and epistemic status, each exposing a next action whose gates are
+      visible and enforced.
+
+  current_failure_modes:
+    - id: FM-BUILD
+      text: "observed — The server does not build. Its dependency path was deleted upstream 2026-06-20."
+    - id: FM-NOWORKSPACE
+      text: "observed — backend.rs stores documents in a per-URI map and validates each with parse_to_graph(single source). There is no cross-file resolution, no import graph, no workspace index. Cross-file go-to-definition is structurally impossible."
+    - id: FM-DRIFT-DOC
+      text: "observed — docs/spec.md (dated 2025-12-15) states the canonical library is `sea-core` at `domainforge/sea-core` and asserts 'Zero logic duplication'. The library no longer exists under that name or path. Documentation and implementation agree with each other and both are wrong about reality."
+    - id: FM-UNUSED-SURFACE
+      text: "observed — the server registers custom method `textDocument/hoverPlus`; the VS Code extension never calls it (it calls only `sea/astJson`). An implemented surface has no consumer."
+    - id: FM-MCP-OVERREACH
+      text: "observed — src/mcp/tools.rs advertises `domainforge/rename-preview`, but capabilities.rs does not declare `rename_provider`. A tool is advertised whose underlying LSP capability is not offered."
+    - id: FM-IDENTITY-BY-POSITION
+      text: "observed — navigation.rs and hover/symbol_resolver.rs resolve by name and source offset within a single buffer. Nothing in the LSP carries a durable semantic identity, so nothing it produces can be joined to a pack, a trace, or an evaluation record."
+    - id: FM-NO-EPISTEMIC-TYPING
+      text: "observed — diagnostics.rs and semantic_diagnostics.rs map findings onto LSP severities only. DomainForge already models `SemanticTruth {Valid, Invalid, Unknown}` and the LSP discards it, collapsing 'unknown' into 'fine'."
+
+  why_existing_approaches_fail: >-
+    Repairing the build alone leaves a per-document server that cannot answer
+    any cross-file, governance, evolution, observation, or evaluation question.
+    Conversely, adding those answers on top of the present architecture would
+    require the LSP to re-derive module resolution, identity, and hashing that
+    DomainForge already computes — reproducing exactly the drift that broke it.
+
+  important_boundary:
+    representation: "DomainForge — declared semantic meaning. Authoritative for grammar, resolution, identity, hashing, packs, diff, projections."
+    observation: "RealityTrace (sxr) — observed consequence, provenance, evidence, settlement. Authoritative for what happened."
+    evaluation: "CEP — the protocol fixing the distinctions (question, evidence, threshold, settlement, capability). Its runtime realization for these repos lives in sxr; the cep repo is the specification and conformance-corpus authority."
+    projection: "domainforge-lsp — interactive projection and affordance surface over the three. Authoritative for none of them."
+    rule: >-
+      The LSP MUST NOT be the canonical store of DomainForge semantics, MUST
+      NOT re-implement RealityTrace storage/verification/provenance, and MUST
+      NOT become an evaluation authority. It MAY cache, index, and project.
+
+# -----------------------------------------------------------------------------
+# 4. REQUIREMENTS FRAME
+# -----------------------------------------------------------------------------
+requirements:
+  goals:
+    - "Restore a compiling, versioned, single-source-of-truth binding to domainforge-core."
+    - "Establish a workspace semantic index derived from DomainForge's canonical semantic envelope, not re-derived."
+    - "Establish a stable DeclarationKey identity shared verbatim with RealityTrace, and a position<->identity binding that survives edits that do not change meaning."
+    - "Route every LSP projection through one internal semantic query service so no business logic lives in protocol handlers."
+    - "Give diagnostics a typed taxonomy that preserves the representation / observation / evaluation distinction and epistemic status."
+    - "Expose observation and evaluation as read-only, deferred, typed-optional enrichment that can never block editing."
+    - "Model actions as gated affordances with explicit precondition, authority, execution, settlement, and failure semantics."
+    - "Keep the server portable; confine VS Code-specific presentation to the client."
+
+  non_goals:
+    - "The LSP does not write to the RealityTrace ledger. Read-only. (Emission is sxr's job.)"
+    - "The LSP does not score, grade, or compute CEP conformance. It projects settlement records produced elsewhere."
+    - "The LSP does not modify the .sea grammar, DomainForge semantics, or RealityTrace record semantics."
+    - "The LSP does not create cross-project APIs for its own convenience; each upstream contract in this spec is justified by an affordance that is otherwise impossible."
+    - "No LSP capability is implemented for protocol completeness. Capabilities classified `not_semantically_meaningful` in the matrix are deliberately absent."
+    - "No AI/LLM inference inside the language server."
+
+# -----------------------------------------------------------------------------
+# 5. OUTCOME CONTRACT
+# -----------------------------------------------------------------------------
+outcome_contract:
+  output_produced:
+    - "A `domainforge-lsp` binary speaking LSP over stdio, building against domainforge-core >= 0.16 as a versioned library dependency."
+    - "An internal SemanticQuery service exposing declaration lookup, dependency, governance, evolution, observation, evaluation, and affordance projections keyed by DeclarationKey."
+    - "A typed DiagnosticRecord stream carrying source, code, severity, epistemic status, evidence reference, and actionability."
+    - "A typed AffordanceRecord set with explicit gate state."
+    - "A documented, versioned server<->client contract for the VS Code extension."
+
+  outcome_verified:
+    - "The workspace fixture builds an envelope whose semantic_closure_hash equals the hash produced by `domainforge envelope` on the same sources (proves no divergent re-derivation)."
+    - "A DeclarationKey resolved at a cursor equals the DeclKey string that sxr records for the same declaration in the same snapshot (proves the join is real, not nominal)."
+    - "With sxr absent and no network, all representation-tier capabilities return correct results and all observation/evaluation surfaces return a typed unavailable state; no request errors and no hang."
+    - "Reformatting a fixture (whitespace only) changes no DeclarationKey and no semantic_closure_hash."
+
+  consumer_and_handoff:
+    consumers:
+      - "domainforge-vsc-extension (primary client)."
+      - "Any LSP 3.17 client (neovim, Helix, Zed, Emacs eglot) for the portable capability subset."
+      - "The existing MCP bridge binary (`domainforge-mcp`), which drives the server as an LSP client."
+    handoff_rule: >-
+      Portable capabilities MUST be reachable through standard LSP methods.
+      Custom methods MUST be namespaced `domainforge/*`, versioned, and
+      advertised in an `initialize` result extension so a client can detect
+      them; a client that ignores them MUST still get a correct standard
+      experience.
+
+# -----------------------------------------------------------------------------
+# 6. CAPABILITY CLAIM
+# -----------------------------------------------------------------------------
+capability_claim:
+  applicability: "applicable"
+  owner: "The engineer or agent editing .sea source."
+  delta: >-
+    Before: the editor can tell you a file parses. After: the editor can tell
+    you what a declaration is, what governs it, what depends on it, how its
+    meaning has changed, what has been observed about it, what evidence
+    exists, whether declared and observed agree, and which of the available
+    next actions is actually permitted right now.
+  why_in_scope: >-
+    The capability is only real if the editor preserves the distinctions the
+    three upstream systems maintain. A projection that flattens them creates
+    confident wrongness, which is worse than the current absence.
+  proven_only_if:
+    - "The DeclarationKey join to sxr is demonstrated against real sxr records, not fixtures alone."
+    - "An affordance whose gate is unsatisfied is demonstrably NOT offered as available."
+    - "Degraded mode is demonstrated with each integration independently removed."
+  not_proven_by:
+    - "Hover rendering more fields."
+    - "A larger LSP capability matrix."
+    - "Passing tests that only use mocks at the adapter boundary."
+  learning_claim: >-
+    We expect to learn whether a position-free canonical envelope plus a span
+    sidecar is sufficient to drive an interactive editor at typing latency, or
+    whether an incremental resolution API is required upstream.
+
+# -----------------------------------------------------------------------------
+# 7. CLAIM DISCIPLINE
+# -----------------------------------------------------------------------------
+claim_discipline:
+  levels:
+    evidence_backed: "Supported by implementation, tests, logs, proof commands, or inspectable artifacts."
+    partially_proven: "Implemented in meaningful pieces but not proven end-to-end or in the target environment."
+    assumption: "Required for the design to hold but not yet proven."
+    roadmap: "Intended future behavior, not required for current conformance."
+
+  claims:
+    - id: CLAIM-001
+      claim: "domainforge-core exposes a complete resolved semantic envelope with cross-module import resolution, reference resolution, and content hashing, sufficient to serve as the LSP's workspace index."
+      level: evidence_backed
+      required_evidence: "Public API with the needed shape."
+      current_evidence: >-
+        observed — domainforge-core/src/application/envelope.rs:
+        `resolve_semantic_envelope_with_packs(entry_logical_path, sources_json,
+        &[(pack_id, content_hash)]) -> Result<CanonicalSemanticEnvelopeDocument,
+        Vec<ApplicationDiagnostic>>`. Document carries modules
+        (logical_id, semantic_content_hash, namespace), import_graph,
+        namespace_bindings, semantic_packs, semantic_declarations,
+        resolved_references (source decl, field_path, target),
+        application_contract, semantic_closure_hash, self_hash.
+        Input is an in-memory source map JSON — no filesystem dependency.
+      gap: "None for the envelope itself. See CLAIM-002 for positions."
+
+    - id: CLAIM-002
+      claim: "The canonical envelope alone is NOT sufficient for editor use, because it is deliberately position-free."
+      level: evidence_backed
+      required_evidence: "Absence of span data in the envelope; presence upstream in the AST."
+      current_evidence: >-
+        observed — envelope.rs contains no span/line/column/SourceRange field on
+        any Canonical* type. It is built at envelope.rs:684 by iterating
+        `module.ast.declarations` as `spanned`, i.e. `Spanned<T>` (parser/ast.rs:141,
+        with `line: usize`, `column: usize`) — the span is in hand at build time
+        and deliberately discarded. ApplicationDiagnostic DOES retain
+        `context.logical_module_id`, `context.line`, `context.column`,
+        `context.symbol_id`, `context.field_path`.
+      gap: >-
+        The LSP cannot map cursor -> CanonicalDeclarationId without either
+        re-deriving resolution (forbidden: that is the drift that broke it) or
+        an upstream span sidecar. This is upstream contract DF-C3.
+
+    - id: CLAIM-003
+      claim: "DomainForge's declaration identity and RealityTrace's declaration key are the same construct, so the source<->trace join is structural, not nominal."
+      level: evidence_backed
+      required_evidence: "Both type definitions, compared."
+      current_evidence: >-
+        observed — domainforge-core application/envelope.rs
+        `enum CanonicalDeclarationId { Concept{id: ConceptId},
+        Application{id: ApplicationSymbolId},
+        Occurrence{kind: String, content_hash: String, duplicate_index: u32} }`.
+        observed — sxr-core/src/types.rs:38
+        `enum DeclKey { Concept(String), Application(String),
+        Occurrence{kind: String, content_hash: String, duplicate_index: u64} }`
+        with `as_str()` producing `concept:{id}` / `application:{sym}` /
+        `occurrence:{kind}:{content_hash}:{duplicate_index}`, documented at
+        types.rs:35 as "Stable declaration key, the spine of the system (§12.1).
+        Deterministic, path-independent, reproducible."
+      gap: >-
+        `duplicate_index` differs in width (u32 vs u64) — harmless widening.
+        The canonical STRING form is defined only in sxr. DomainForge does not
+        emit the string form. Upstream contract DF-C3 must fix the string
+        encoding so both sides agree byte-for-byte.
+
+    - id: CLAIM-004
+      claim: "ConceptId is deterministic from (namespace, name) and therefore survives file moves and formatting, but NOT rename or renamespacing."
+      level: evidence_backed
+      required_evidence: "Implementation and its tests."
+      current_evidence: >-
+        observed — concept_id.rs: `ConceptId::from_concept(namespace, name)` =
+        UUIDv5 over `"{namespace}::{name}"` under a fixed DNS namespace UUID.
+        Tests assert determinism and namespace-sensitivity.
+      gap: >-
+        A rename is, correctly, an identity change — but it is indistinguishable
+        from delete+create. Continuity across a rename is exactly what
+        ConceptChange records exist to express; the LSP MUST route rename through
+        that machinery rather than pretending identity is preserved.
+
+    - id: CLAIM-005
+      claim: "SXR already consumes DomainForge through a proven CLI boundary, and the LSP should reuse that exact contract rather than inventing one."
+      level: evidence_backed
+      required_evidence: "The adapter implementation."
+      current_evidence: >-
+        observed — sxr-df/src/adapter.rs `CliDomainForgeAdapter::resolve()` runs
+        `domainforge envelope --emit both [--pack id=hash]... [--default-namespace ns]
+        --scope <canonical-json> <entry_logical_path>` with cwd = semantic root,
+        accepting exit 0 or 1, classifying strictly by envelope SHAPE not exit
+        code, and parsing `{"representation": D, "cep_envelope": E}`.
+        Cargo.toml description: "CliDomainForgeAdapter: SemanticSourcePort over
+        the domainforge envelope CLI."
+      gap: >-
+        The LSP MUST use the in-process library call, not the subprocess, on the
+        editor hot path (process spawn per keystroke is not viable). Both paths
+        MUST produce identical semantic_closure_hash; that equality is a required
+        test (see validation_matrix).
+
+    - id: CLAIM-006
+      claim: "The `cep` repository exposes NO callable per-declaration evaluation boundary. It is a specification and conformance-corpus authority."
+      level: evidence_backed
+      required_evidence: "The complete CLI and module surface."
+      current_evidence: >-
+        observed — cep/src/cep/cli.py commands: doctor, validate-schemas,
+        validate-reality-gap-corpus, validate-semantic-envelope, validate-all,
+        conformance-anti-collapse, run-reality-gap, run-reality-gap-corpus,
+        run-authority-corpus, run-settlement-corpus, run-capability-corpus,
+        score-settlement. Modules: detect, inventory, io, reports, scoring,
+        validation, schema_profile, conformance, benchmarks, exporters.
+        Every entry point operates on benchmark CASE DIRECTORIES, not on a live
+        model or declaration.
+      gap: >-
+        There is no `cep evaluate <declaration>`. Any LSP feature phrased as
+        "ask CEP about this symbol" is unimplementable. The runtime evaluation
+        surface is sxr (question/threshold/claim/evidence/settlement/residual/
+        diagnostic), which implements CEP's distinctions.
+
+    - id: CLAIM-007
+      claim: "Two distinct artifacts are both called 'semantic envelope' and MUST NOT be conflated."
+      level: evidence_backed
+      required_evidence: "Both schemas."
+      current_evidence: >-
+        observed — (A) DomainForge `CanonicalSemanticEnvelope`: the RESOLVED
+        MODEL (modules, declarations, resolved_references, closure hash).
+        (B) CEP `schemas/semantic-envelope.schema.json`, titled "CEP-0008
+        Semantic Envelope (v1 flat profile)", required fields
+        [schema_version, event_id, source_agent, occurred_at, payload,
+        provenance] — a TRANSPORT/EVENT envelope whose `payload` is explicitly
+        an "opaque carrier". cep/schemas/semantic-envelope.mapping.md documents
+        the field mapping and an unresolved gap (OQ-0009) where CEP-0008 §52
+        requires scope/boundary_record/completeness_status/omission_status that
+        the v1 flat contract has no top-level field for.
+      gap: >-
+        In sxr-df the two appear together as `{"representation": D,
+        "cep_envelope": E}` — D is (A), E is (B). The LSP's types MUST name them
+        distinctly (`CanonicalEnvelope` vs `CepEventEnvelope`). Collapsing them
+        would be an anti-collapse violation in the tool built to preserve
+        anti-collapse.
+
+    - id: CLAIM-008
+      claim: "The current LSP duplicates no grammar, but its symbol resolution is hand-rolled and buffer-local."
+      level: partially_proven
+      required_evidence: "A duplication audit after the build is restored."
+      current_evidence: >-
+        observed — no `Regex` dependency and no regex use in hover/symbol_resolver.rs;
+        parsing goes through `sea_core::parse_to_graph`. But navigation.rs (154 LOC),
+        hover/symbol_resolver.rs (1,146 LOC) and code_actions.rs (967 LOC, 4
+        string-prefix heuristics) implement name/offset resolution locally.
+      gap: >-
+        Cannot be fully audited until the crate compiles. The 1,146-line
+        symbol_resolver is the primary suspect for logic that
+        `resolved_references` already provides canonically.
+
+    - id: CLAIM-009
+      claim: "SXR's read surface is too narrow for declaration-keyed editor queries AND its one query command is not side-effect free."
+      level: evidence_backed
+      required_evidence: "The CLI query surface and the query implementation."
+      current_evidence: >-
+        observed — sxr-cli/src/main.rs `QueryCmds` has exactly one variant:
+        `Evidence { repo: String, entity: String }`. Other read commands:
+        `explain <record_id>`, `context --repo --failure`, `semantic status --repo`,
+        `projections status --repo`. Global `--json` flag exists.
+        observed — sxr-cli/src/commands.rs:2378 `query_evidence` is NOT read-only.
+        It calls `state::require_enrollment`, then
+        `durability::ensure_committed(ctx, repo_id, &[entity])` ("F-19b: a queried
+        entity must be committed, not pending"), then `projections::rebuild(ctx,
+        repo_id)` — it REBUILDS THE PROJECTION STORE as a precondition of
+        answering, before delegating to
+        `projections::query_evidence_declared(&conn, repo_id, entity)`.
+      gap: >-
+        Two gaps, not one. (a) No `sxr query --declaration <declkey>` returning
+        records whose subject_refs include that declaration. (b) The existing
+        query command writes, so the LSP MUST NOT call it — doing so from an
+        editor would mutate sxr state as a side effect of inspection, violating
+        REQ-OBS-001 and REQ-SEC-001. SXR-C1 must therefore deliver a genuinely
+        side-effect-free read path, not merely a new argument on the existing one.
+
+    - id: CLAIM-010
+      claim: "Editor-latency feasibility of full-workspace envelope resolution per edit is unmeasured."
+      level: assumption
+      required_evidence: "A benchmark on a representative multi-module workspace."
+      current_evidence: >-
+        observed — `resolve_semantic_envelope_with_packs` takes the WHOLE source
+        map and resolves from the entry point; there is no incremental or
+        partial-invalidation entry point. It also calls
+        `enforce_source_map_budget`, implying a bounded input size.
+      gap: >-
+        If full re-resolution exceeds the debounce budget, an incremental
+        resolution API is required upstream (DF-C4, roadmap). Until measured,
+        the design MUST assume it may be too slow and keep the syntax tier
+        independent of it.
+
+# -----------------------------------------------------------------------------
+# 8. SYSTEM OVERVIEW
+# -----------------------------------------------------------------------------
+system_overview:
+  architecture_pattern:
+    primary: "Layered semantic service with a single internal query facade and typed optional adapters (ports & adapters at every external edge)."
+    rationale: >-
+      The failure that broke this repository was a direct, unversioned,
+      structural coupling to an upstream crate path. The failure that would
+      break the next version is business logic scattered across protocol
+      handlers. A single query facade fed by canonical upstream data, with
+      every external system behind a typed port that has an explicit
+      unavailable state, addresses both.
+    intentionally_not_used:
+      - pattern: "Independent LSP-side parser/resolver"
+        why: "This is precisely the duplication that produced FM-DRIFT-DOC. Grammar and resolution stay in domainforge-core."
+      - pattern: "Handler-local logic (each of hover/definition/references/codeAction computing its own answers)"
+        why: "Guarantees divergence between projections of the same fact; already visible in the 1,146-line symbol_resolver."
+      - pattern: "Synchronous external calls (sxr subprocess) inside LSP request handlers"
+        why: "Ordinary editing must never depend on RealityTrace availability or latency."
+      - pattern: "LSP-owned evaluation logic"
+        why: "Would make the editor an evaluation authority, collapsing the boundary the whole ecosystem exists to preserve."
+
+  main_components:
+    - id: L0
+      name: "Document & Text Service"
+      responsibility: "Buffer state, versions, incremental sync, UTF-16<->byte offset mapping via LineIndex."
+      owns: "Open document contents and versions."
+      must_not: "Interpret .sea syntax."
+
+    - id: L1
+      name: "Syntax Service"
+      responsibility: "Per-document parse and format via domainforge_core::{parser, formatter}. Always available, never blocked."
+      owns: "Per-document AST + parse diagnostics + format edits."
+      must_not: "Attempt cross-file resolution."
+
+    - id: L2
+      name: "Envelope Service (workspace semantic index)"
+      responsibility: "Assemble the workspace SourceMap (open buffers override disk), call domainforge_core::application::envelope::resolve_semantic_envelope_with_packs, cache the resulting CanonicalSemanticEnvelopeDocument keyed by source_set_hash + semantic_pack_set_hash."
+      owns: "The current envelope, its semantic_closure_hash, and its ApplicationDiagnostics."
+      must_not: "Re-derive module resolution, reference resolution, or hashing."
+
+    - id: L3
+      name: "Span Binding Service"
+      responsibility: "Maintain a bidirectional map DeclarationKey <-> (logical_module_id, SourceRange) for declarations and reference sites, sourced from the upstream span sidecar (DF-C3)."
+      owns: "The position<->identity binding, and only it."
+      must_not: "Treat a source position as an identity, or synthesize a key when the sidecar is absent."
+
+    - id: L4
+      name: "SemanticQuery Facade"
+      responsibility: "The single internal API every LSP projection consults. Declaration lookup, dependents/dependencies, governance (policy/authority/pack status), units/dimensions, evolution, and enrichment handles."
+      owns: "Query semantics and result shapes."
+      must_not: "Know about LSP types, VS Code, or markdown."
+
+    - id: L5
+      name: "Evolution & Impact Service"
+      responsibility: "Pack diff (semantic_pack::diff_packs -> DiffClassification), meaning fingerprint / definition hash comparison, closure-hash delta, ConceptChange association, downstream impact over resolved_references and projection consumers."
+      owns: "Change classification and impact sets."
+      must_not: "Decide whether a change is permitted — that is governance, and it is declared, not computed here."
+
+    - id: L6
+      name: "Observation Port (RealityTrace adapter)"
+      responsibility: "Read-only, out-of-band, cancellable queries to sxr keyed by DeclarationKey; returns typed Available/Unavailable/Stale."
+      owns: "The sxr boundary and its failure typing."
+      must_not: "Write to the ledger, verify hashes itself, re-implement provenance, or run on a hot path."
+
+    - id: L7
+      name: "Evaluation Projection"
+      responsibility: "Project question/threshold/claim/evidence/settlement/residual/diagnostic records — obtained through L6 — into editor-legible states, preserving CEP distinctions."
+      owns: "Presentation of evaluation state."
+      must_not: "Compute settlement, score, or infer a verdict from absent evidence."
+
+    - id: L8
+      name: "Affordance Service"
+      responsibility: "Turn resolved conditions into AffordanceRecords with explicit gate state; evaluate gates before anything is offered as available."
+      owns: "Action availability semantics."
+      must_not: "Convert a governance gate into a ranking or recommendation score."
+
+    - id: L9
+      name: "LSP Protocol Projection"
+      responsibility: "Map L4..L8 results onto LSP types. Thin, mechanical, testable."
+      owns: "Wire format."
+      must_not: "Contain semantic decisions."
+
+    - id: L10
+      name: "VS Code Client (separate repo)"
+      responsibility: "Trees, graph views, webviews, multi-step command UX, presentation of custom domainforge/* results."
+      owns: "VS Code-specific UX."
+      must_not: "Re-derive semantics; it consumes server results only."
+
+  component_diagram:
+    mermaid: |-
+      flowchart TB
+        subgraph UP["Upstream authorities (not owned by the LSP)"]
+          DF["domainforge-core 0.16+\nlibrary: parser, formatter,\nsemantic_pack, application::envelope"]
+          SXR["sxr (RealityTrace)\nledger: 27 record kinds\nkeyed by DeclKey"]
+          CEP["cep\nspecification + conformance corpus\n(no runtime eval API)"]
+        end
+        subgraph LSP["domainforge-lsp"]
+          L0["L0 Document/Text"] --> L1["L1 Syntax"]
+          L1 --> L2["L2 Envelope Service"]
+          L2 --> L3["L3 Span Binding"]
+          L2 --> L4["L4 SemanticQuery facade"]
+          L3 --> L4
+          L4 --> L5["L5 Evolution & Impact"]
+          L4 --> L8["L8 Affordance"]
+          L6["L6 Observation Port"] -.deferred.-> L4
+          L6 --> L7["L7 Evaluation Projection"]
+          L7 -.deferred.-> L8
+          L4 --> L9["L9 LSP Projection"]
+          L5 --> L9
+          L8 --> L9
+        end
+        DF -->|"in-process library call"| L1
+        DF -->|"resolve_semantic_envelope_with_packs"| L2
+        DF -.->|"span sidecar DF-C3"| L3
+        SXR -->|"read-only CLI --json, out-of-band"| L6
+        CEP -.->|"defines distinctions; no call"| L7
+        L9 --> C["LSP clients (portable)"]
+        L9 --> V["L10 VS Code extension\n(domainforge/* extensions)"]
+
+  external_dependencies:
+    - name: "domainforge-core"
+      kind: "Rust library (required)"
+      version_constraint: ">=0.16, <0.17 — see compatibility contract"
+      failure_mode: "Build-time. A version outside the range MUST fail the build, not degrade at runtime."
+    - name: "sxr binary"
+      kind: "External process, read-only (optional)"
+      version_constraint: "Discovered at runtime; capability-probed, not assumed."
+      failure_mode: "Runtime, typed unavailable. MUST NOT affect representation-tier behavior."
+    - name: "cep"
+      kind: "Specification only (no runtime dependency)"
+      version_constraint: "N/A"
+      failure_mode: "N/A — the LSP never calls it."
+    - name: "tower-lsp"
+      kind: "Rust library"
+      version_constraint: "0.20 (current). Migration to a maintained LSP crate is roadmap, not required."
+      failure_mode: "Build-time."
+
+# -----------------------------------------------------------------------------
+# 9. CORE DOMAIN MODEL
+# -----------------------------------------------------------------------------
+core_domain_model:
+  scope_rule: >-
+    The smallest model preserving the distinctions the ecosystem depends on:
+    identity, tier, epistemic status, and gate state. Anything expressible by
+    re-reading the canonical envelope is NOT modelled here.
+
+  entities:
+    - name: DeclarationKey
+      purpose: "The identity spine. Joins source, pack, envelope, trace, and evaluation."
+      definition: >-
+        A newtype over the canonical string form of DomainForge's
+        CanonicalDeclarationId, byte-identical to sxr DeclKey::as_str():
+        `concept:{uuid}` | `application:{symbol}` |
+        `occurrence:{kind}:{content_hash}:{duplicate_index}`.
+      invariants:
+        - "MUST be derived from the canonical envelope, never constructed from a cursor position."
+        - "MUST be stable across whitespace/formatting changes, comment edits, and file moves that preserve logical_module_id."
+        - "MUST change when namespace or name changes — that is a real identity change, surfaced as such."
+        - "MUST round-trip: DeclarationKey -> range -> DeclarationKey is the identity function within one envelope version."
+
+    - name: IdentityFacet
+      purpose: "Prevents collapsing distinct notions of sameness."
+      facets:
+        syntactic: "A source range in a buffer. Ephemeral. Never an identity."
+        declared: "namespace + name as written."
+        semantic: "ConceptId = UUIDv5(namespace::name). Stable, deterministic."
+        module_content: "CanonicalModuleRef.semantic_content_hash — per-module semantic content."
+        model_closure: "semantic_closure_hash — the whole resolved envelope."
+        document: "envelope_document_self_hash — the document including producer and inputs."
+        pack_content: "compute_pack_content_hash — pack bytes minus signature/timestamp."
+        meaning_fingerprint: "compute_meaning_fingerprint — definition hashes + status + decision refs."
+        definition: "compute_definition_hash(text, examples, counterexamples, status)."
+        trace: "sxr entry_ulid / record_id."
+      rule: >-
+        These MUST remain distinct fields. observed: DomainForge already
+        computes all of them separately. The LSP MUST NOT introduce a single
+        conflated 'version' or 'hash' field in any user-facing projection.
+
+    - name: SemanticFact
+      purpose: "Any datum the LSP surfaces."
+      fields:
+        subject: "DeclarationKey"
+        tier: "representation | observation | evaluation"
+        source: "Which authority produced it (domainforge-core@ver | sxr@ver | derived)"
+        epistemic_status: "valid | invalid | unknown | unavailable | stale"
+        as_of: "The identity the fact was computed against (closure hash and/or snapshot id)"
+      invariant: "A fact whose `as_of` differs from the current envelope identity MUST be marked `stale`, never silently refreshed or silently shown as current."
+
+    - name: DiagnosticRecord
+      purpose: "Typed diagnostic preserving tier and epistemic status."
+      fields: "source, code, severity, semantic_truth, subject (DeclarationKey, optional), range, related_information, evidence_ref, actionability, staleness"
+
+    - name: AffordanceRecord
+      purpose: "A candidate next action with its gate."
+      fields: "id, title, trigger_condition, tier, gate_state, preconditions, authority_assumption, execution (mechanism), expected_result, settlement_path, failure_behavior, reversibility"
+
+    - name: IntegrationState
+      purpose: "Typed optionality for every external port."
+      values: "available{version} | not_configured | binary_missing | incompatible_version{found, required} | timeout | error{message} | disabled_by_config"
+      rule: "MUST be a value, never an absence, and MUST be renderable to the user as a reason."
+
+  identifiers_and_normalization:
+    - "logical_module_id is the workspace-relative logical path used by DomainForge. observed: sxr-df requires it be relative, never absolute, because 'the producer embeds it in the envelope scope verbatim'. The LSP MUST apply the same rule when converting a file:// URI."
+    - "URI<->logical_module_id conversion MUST be a single audited function; path handling divergence would silently break the trace join."
+    - "All hashes are `sha256:<64 lowercase hex>`. observed — domainforge-core envelope.rs `is_hash()` enforces exactly this."
+
+# -----------------------------------------------------------------------------
+# 10. CONFIGURATION AND INPUT CONTRACT
+# -----------------------------------------------------------------------------
+configuration_and_input_contract:
+  configuration_sources_precedence:
+    - "1. LSP `workspace/didChangeConfiguration` / `workspace/configuration` (client-supplied, highest)."
+    - "2. `domainforge-lsp.toml` at the workspace root."
+    - "3. `.sea-registry.toml` at the workspace root, for registry/namespace discovery only. observed: this file exists in the domainforge repo root."
+    - "4. Built-in defaults (lowest)."
+
+  resolution_rules:
+    - "TOML is the file format. observed: the DomainForge ecosystem already uses .sea-registry.toml and Cargo.toml conventions."
+    - "MUST NOT read runtime behavior from Markdown."
+    - "MUST NOT hardcode absolute paths. The sxr binary MUST be discovered via config key, then PATH; never a baked-in path."
+    - "Environment variables are permitted ONLY for secrets and for CI overrides, never as the primary configuration surface."
+    - "Command-line flags on the server binary are limited to transport and logging. Semantic configuration MUST come from the sources above."
+
+  required_config_fields:
+    - key: "domainforge.workspace.entry"
+      type: "string (logical path)"
+      required: false
+      default: "implementation-defined discovery; outcome: a deterministic, reported choice"
+      note: "The envelope is resolved from an entry point. observed: resolve_semantic_envelope_with_packs takes entry_logical_path. Multi-entry workspaces are an open question (OQ-3)."
+    - key: "domainforge.packs"
+      type: "array of {id, content_hash, path}"
+      required: false
+      default: "[] (observed: the empty pack set is the documented Milestone 0 default)"
+    - key: "domainforge.realitytrace.enabled"
+      type: "bool"
+      required: false
+      default: "false"
+      note: "Observation tier is OFF by default. It performs process execution; opt-in is a governance requirement, not a preference."
+    - key: "domainforge.realitytrace.binary"
+      type: "string path"
+      required: false
+      default: "`sxr` resolved on PATH"
+    - key: "domainforge.realitytrace.repo"
+      type: "string"
+      required: false
+      note: "observed: every sxr read command requires --repo."
+    - key: "domainforge.realitytrace.timeoutMs"
+      type: "integer"
+      required: false
+      default: "2000"
+
+  error_classes:
+    - class: "config_invalid"
+      behavior: "Report via window/showMessage AND a workspace diagnostic. Fall back to defaults for the invalid key only. MUST NOT abort the server."
+    - class: "entry_not_found"
+      behavior: "Envelope tier enters IntegrationState::not_configured. Syntax tier continues fully."
+    - class: "pack_unreadable"
+      behavior: "Typed pack diagnostic (PackUnavailable). observed: domainforge-core already defines SemanticDiagnosticCode::PackUnavailable — reuse it, do not invent a code."
+
+  error_surface_requirements:
+    - "Every degraded tier MUST be visible to the user as a reason, not as silence."
+    - "A configuration error MUST NOT be reported as a syntax error in a .sea file."
+
+  dynamic_reload:
+    - "Configuration changes MUST invalidate the envelope cache and re-resolve; they MUST NOT require a server restart."
+    - "Toggling realitytrace.enabled off MUST cancel in-flight sxr queries and clear observation-tier state."
+
+  startup_preflight:
+    - "Record domainforge-core version compiled against (compile-time constant)."
+    - "If realitytrace.enabled, probe the sxr binary once (version/doctor), record IntegrationState, and never block initialize on it."
+    - "Report the resulting tier availability to the client in the initialize result extension so the client can render honest UI affordances."
+
+  primary_input:
+    description: "The set of .sea sources in the workspace plus open unsaved buffers."
+    rule: >-
+      Open buffers MUST override on-disk contents when building the SourceMap,
+      so the envelope reflects what the user is looking at. observed: the API
+      accepts an in-memory source map, so this requires no filesystem writes.
+
+# -----------------------------------------------------------------------------
+# 11. OPERATIONAL FLOW AND STATE MODEL
+# -----------------------------------------------------------------------------
+operational_flow_and_state_model:
+  flow_summary:
+    - "didOpen/didChange -> L0 updates buffer -> L1 parses (immediate, syntax diagnostics published)."
+    - "Debounced -> L2 rebuilds SourceMap, re-resolves envelope, updates L3 span bindings and L4 caches; envelope diagnostics published as a separate, typed stream."
+    - "On demand (hover/definition/references/codeLens) -> L9 asks L4; answers come from cache; representation tier answers synchronously."
+    - "Enrichment: if observation tier is enabled, L6 issues a cancellable out-of-band query keyed by DeclarationKey; results arrive later and are pushed as a refresh, never awaited inline."
+    - "Actions: a client executeCommand asks L8 to re-evaluate the gate at execution time, then performs the governed action."
+
+  flow_diagram:
+    mermaid: |-
+      sequenceDiagram
+        participant Ed as Editor
+        participant L0 as L0/L1 Syntax
+        participant L2 as L2 Envelope
+        participant L4 as L4 Query
+        participant L6 as L6 Observation (optional)
+        Ed->>L0: didChange
+        L0-->>Ed: syntax diagnostics (immediate)
+        L0->>L2: debounced rebuild
+        L2->>L2: resolve_semantic_envelope_with_packs
+        L2-->>Ed: envelope diagnostics (typed, separate source)
+        Ed->>L4: hover(position)
+        L4->>L4: span binding -> DeclarationKey -> facts
+        L4-->>Ed: representation-tier hover (sync)
+        L4->>L6: enrich(DeclarationKey) [spawned, cancellable]
+        L6-->>Ed: refresh / lens update (later, or typed unavailable)
+
+  service_states:
+    - "starting"
+    - "syntax_only        — L1 available; envelope not yet resolved or unavailable"
+    - "representation     — envelope resolved; full local semantics"
+    - "enriched           — representation + observation and/or evaluation available"
+    - "degraded           — one or more optional tiers in a typed unavailable state"
+    - "shutting_down"
+
+  transition_rules:
+    - "syntax_only is the floor. The server MUST reach and remain able to serve syntax_only regardless of any other failure."
+    - "A transition to `degraded` MUST NOT remove any representation-tier capability."
+    - "A failure in L6/L7 MUST NOT transition the server out of `representation`."
+
+  idempotency_rule: >-
+    Re-resolving the envelope with an unchanged (source_set_hash,
+    semantic_pack_set_hash) MUST be a cache hit and MUST produce an identical
+    semantic_closure_hash. A differing hash for identical inputs is a
+    determinism defect and MUST fail the determinism gate.
+
+  important_nuances:
+    - "Classify by SHAPE, not exit code. observed — sxr-df/adapter.rs documents this explicitly: `envelope --emit cep` exits 1 for any model-validation failure, but a validated model with diagnostics and an unconstructable model are different outcomes sharing exit 1. The LSP MUST replicate this discipline: a model that resolved-with-diagnostics is Resolved; only a model where D could not be constructed is ValidationFailed."
+    - "observed — sxr-core SemanticContext models exactly this closed sum: Resolved{content_hash, semantic_closure_hash, declarations, diagnostics} | ValidationFailed{invalid_declared_checkpoint_hash, representation_omission, diagnostics}. The LSP SHOULD mirror this sum type rather than using Option."
+    - "An unconstructable model MUST still leave syntax-tier features working per-file."
+
+# -----------------------------------------------------------------------------
+# 12. CORE BEHAVIOR REQUIREMENTS
+# -----------------------------------------------------------------------------
+core_behavior_requirements:
+
+  canonical_dependency:
+    - id: REQ-CANON-001
+      text: "The LSP MUST depend on domainforge-core as a named, version-constrained Cargo dependency. It MUST NOT depend on a bare filesystem path that can be deleted by an upstream rename."
+    - id: REQ-CANON-002
+      text: "The LSP MUST NOT contain a .sea grammar, tokenizer, or parser. All parsing MUST go through domainforge_core::parser."
+    - id: REQ-CANON-003
+      text: "The LSP MUST NOT implement module resolution, import resolution, namespace binding, or reference resolution. All of these MUST be read from the canonical envelope."
+    - id: REQ-CANON-004
+      text: "The LSP MUST NOT compute any semantic hash itself. All hashes MUST be obtained from domainforge-core functions."
+    - id: REQ-CANON-005
+      text: "The LSP MUST NOT re-implement formatting. Formatting MUST delegate to domainforge_core::formatter."
+    - id: REQ-CANON-006
+      text: "A CI gate MUST fail the build if the LSP source introduces a grammar file, a regex over .sea syntax, or a local hash computation over semantic content."
+
+  identity:
+    - id: REQ-ID-001
+      text: "The LSP MUST represent declaration identity as DeclarationKey, byte-identical to sxr DeclKey::as_str()."
+    - id: REQ-ID-002
+      text: "The LSP MUST NOT use a source position, byte offset, or line/column pair as a durable identity in any cache key, action payload, or external query."
+    - id: REQ-ID-003
+      text: "A formatting-only edit MUST leave every DeclarationKey and the semantic_closure_hash unchanged."
+    - id: REQ-ID-004
+      text: "A file move that preserves logical_module_id MUST leave every Concept-kind DeclarationKey unchanged."
+    - id: REQ-ID-005
+      text: "A rename or renamespacing MUST be surfaced as an identity change, and the LSP MUST offer the ConceptChange affordance rather than implying continuity."
+    - id: REQ-ID-006
+      text: "The LSP MUST keep the identity facets in IdentityFacet distinct in every projection. It MUST NOT present a single conflated 'version' or 'hash'."
+    - id: REQ-ID-007
+      text: "When the span sidecar (DF-C3) is unavailable, the LSP MUST report the envelope tier as degraded for position-keyed features. It MUST NOT synthesize a DeclarationKey by name matching."
+
+  workspace_index:
+    - id: REQ-IDX-001
+      text: "The workspace semantic index MUST be the CanonicalSemanticEnvelopeDocument returned by domainforge-core, cached, not a parallel structure derived from it."
+    - id: REQ-IDX-002
+      text: "The SourceMap MUST use open buffer contents in preference to on-disk contents."
+    - id: REQ-IDX-003
+      text: "logical_module_id MUST be workspace-relative, never absolute."
+    - id: REQ-IDX-004
+      text: "The cache MUST be keyed by (source_set_hash, semantic_pack_set_hash) and MUST be bounded; an unbounded cache is a defect."
+    - id: REQ-IDX-005
+      text: "Envelope resolution MUST be cancellable and debounced; a superseded resolution MUST NOT publish its results."
+    - id: REQ-IDX-006
+      text: "When resolution yields ValidationFailed, the LSP MUST retain the last successful envelope for navigation, marked stale, rather than dropping all semantic capability."
+
+  query_service:
+    - id: REQ-QRY-001
+      text: "Every LSP handler MUST obtain its answer from the SemanticQuery facade. A handler MUST NOT resolve symbols, walk the envelope, or compute impact itself."
+    - id: REQ-QRY-002
+      text: "The facade MUST NOT reference LSP or VS Code types, so it remains independently testable."
+    - id: REQ-QRY-003
+      text: "Two projections of the same fact (e.g. hover and code lens) MUST call the same facade method, so they cannot disagree."
+
+  diagnostics:
+    - id: REQ-DIAG-001
+      text: "Every diagnostic MUST carry a `source` identifying its tier and authority, drawn from a closed set: domainforge.syntax, domainforge.semantic, domainforge.envelope, domainforge.pack, domainforge.evolution, realitytrace.drift, realitytrace.evidence, evaluation.residual, integration.unavailable."
+    - id: REQ-DIAG-002
+      text: "A diagnostic originating from observation or evaluation MUST NOT be published with LSP severity Error. It MUST use Information or Hint and carry its epistemic status explicitly."
+    - id: REQ-DIAG-003
+      text: "The LSP MUST preserve domainforge-core's SemanticTruth {Valid, Invalid, Unknown}. `Unknown` MUST NOT be rendered as valid or omitted."
+    - id: REQ-DIAG-004
+      text: "Diagnostic codes originating from domainforge-core MUST reuse SemanticDiagnosticCode verbatim. The LSP MUST NOT invent parallel codes for conditions upstream already names."
+    - id: REQ-DIAG-005
+      text: "A diagnostic MUST NOT be attributed to a source range the user cannot act on. Whole-model conditions MUST be published as workspace-level diagnostics or on the entry module, not scattered onto arbitrary declarations."
+    - id: REQ-DIAG-006
+      text: "A stale observation or evaluation diagnostic MUST be labelled with the identity it was computed against and MUST NOT be presented as current."
+    - id: REQ-DIAG-007
+      text: "Unavailability of an optional integration MUST be surfaced once, at workspace level, as `integration.unavailable` — not repeated per declaration."
+
+  evolution_and_impact:
+    - id: REQ-EVO-001
+      text: "Change classification MUST come from domainforge_core::semantic_pack::diff_packs / DiffClassification {Additive, DefinitionalChange, Deprecating, Breaking, GovernanceCritical, SignatureOnly}. The LSP MUST NOT invent its own severity ladder for semantic change."
+    - id: REQ-EVO-002
+      text: "Downstream impact MUST be computed from the envelope's resolved_references, not from textual search."
+    - id: REQ-EVO-003
+      text: "The LSP MUST distinguish what is answerable statically from the envelope, from packs, from RealityTrace, and only by running a command; and MUST label each answer accordingly."
+    - id: REQ-EVO-004
+      text: "When a change is classified Breaking or GovernanceCritical, the LSP MUST surface whether a ConceptChange already describes it before offering to create one."
+
+  observation_port:
+    - id: REQ-OBS-001
+      text: "All RealityTrace access MUST be read-only. The LSP MUST NOT invoke any sxr command that appends to the ledger."
+    - id: REQ-OBS-002
+      text: "RealityTrace access MUST be disabled by default and MUST require explicit configuration to enable."
+    - id: REQ-OBS-003
+      text: "No LSP request handler may block on a RealityTrace query. Observation results MUST be delivered out of band."
+    - id: REQ-OBS-004
+      text: "Every RealityTrace query MUST have a timeout and MUST be cancellable; a timeout MUST produce IntegrationState::timeout, not an error diagnostic on the model."
+    - id: REQ-OBS-005
+      text: "The LSP MUST NOT verify hash chains, re-derive provenance, or re-check evidence qualification. It projects records as sxr reports them."
+    - id: REQ-OBS-006
+      text: "Observation results MUST be bound to the snapshot identity they were computed against, and MUST be marked stale when the current closure hash differs."
+    - id: REQ-OBS-007
+      text: "The LSP MUST preserve the four projection-freshness states returned by the declaration query — current, stale{projection_head, ledger_head}, absent, pending{uncommitted_entities} — as distinct user-facing states. It MUST NOT collapse them into present/absent, MUST NOT render stale or pending records as current, and MUST NOT trigger a projection rebuild to resolve staleness on a passive path. Rebuild, if offered at all, is a governed execution requiring explicit user action."
+
+  evaluation_projection:
+    - id: REQ-EVAL-001
+      text: "The LSP MUST NOT compute settlement, thresholds, scores, or conformance verdicts."
+    - id: REQ-EVAL-002
+      text: "The LSP MUST NOT call the `cep` Python package. observed: it exposes no per-declaration evaluation entry point (CLAIM-006)."
+    - id: REQ-EVAL-003
+      text: "Evaluation state MUST preserve CEP's distinctions: a claim is not evidence; evidence is not settlement; settlement is not approval; absence of evidence is not a negative result."
+    - id: REQ-EVAL-004
+      text: "Absent evidence MUST be rendered as `unknown` / `no evidence recorded`, never as `failing` or `passing`."
+    - id: REQ-EVAL-005
+      text: "The two envelope kinds MUST be represented by distinct types with distinct names (CanonicalEnvelope vs CepEventEnvelope). Conflating them is a conformance failure."
+
+  affordances:
+    - id: REQ-AFF-001
+      text: "Every offered action MUST be an AffordanceRecord with an explicit gate_state from: informational, available, blocked, requires_evidence, requires_authority, requires_settlement, unavailable."
+    - id: REQ-AFF-002
+      text: "An action whose gate is not satisfied MUST NOT be presented as available. It MAY be presented as blocked with its reason."
+    - id: REQ-AFF-003
+      text: "A gate MUST NOT be represented as a numeric score, confidence, or ranking."
+    - id: REQ-AFF-004
+      text: "Gates MUST be re-evaluated at execution time, not only at offer time."
+    - id: REQ-AFF-005
+      text: "Every AffordanceRecord MUST declare preconditions, authority assumption, execution mechanism, expected result, settlement path, failure behavior, and reversibility."
+    - id: REQ-AFF-006
+      text: "An affordance whose execution mechanism does not yet exist MUST be classified `unavailable` (future) and MUST NOT appear in code actions."
+
+  configuration:
+    - id: REQ-CFG-001
+      text: "Configuration MUST resolve in the precedence order: LSP client configuration, then domainforge-lsp.toml, then .sea-registry.toml (registry/namespace discovery only), then built-in defaults."
+    - id: REQ-CFG-002
+      text: "Runtime behavior MUST NOT be derived from prose Markdown. Machine-readable TOML is the file format."
+    - id: REQ-CFG-003
+      text: "The LSP MUST NOT hardcode environment-specific absolute paths. External binaries MUST be resolved from configuration, then PATH."
+    - id: REQ-CFG-004
+      text: "Configuration changes MUST take effect without a server restart, invalidating dependent caches; disabling a tier MUST cancel that tier's in-flight work."
+    - id: REQ-CFG-005
+      text: "An invalid configuration key MUST degrade only that key to its default, MUST be reported to the user, and MUST NOT abort the server or surface as a .sea syntax error."
+
+  degraded_mode:
+    - id: REQ-DEG-001
+      text: "Tier T0 (syntax: parse, format, syntax diagnostics, document symbols) MUST function with no envelope, no packs, no sxr, and no network."
+    - id: REQ-DEG-002
+      text: "Tier T1 (representation: cross-file navigation, references, governance, impact) MUST function with domainforge-core alone."
+    - id: REQ-DEG-003
+      text: "Tiers T3 (observation) and T4 (evaluation) MUST be independently removable without affecting T0-T2."
+    - id: REQ-DEG-004
+      text: "Every unavailable tier MUST report a typed reason. Silent absence is a defect."
+    - id: REQ-DEG-005
+      text: "The server MUST NOT make any network request. All integration is local process or library."
+
+  security_and_governance:
+    - id: REQ-SEC-001
+      text: "No passive LSP request (hover, diagnostics, inlay hints, code lens, semantic tokens, document symbols, completion) may spawn a process, write a file, or mutate state outside the LSP's own caches."
+    - id: REQ-SEC-002
+      text: "Process execution MUST occur only in response to an explicit user action (executeCommand) or an explicitly enabled, read-only, rate-limited background enrichment."
+    - id: REQ-SEC-003
+      text: "Any action that writes files, rebuilds artifacts, or invokes project tooling MUST require explicit user confirmation and MUST be classified as governed execution."
+    - id: REQ-SEC-004
+      text: "The LSP MUST constrain all file access to declared workspace roots. observed: src/mcp/guardrails.rs already implements allowed_roots path canonicalization — this discipline MUST be extended to the LSP server, not left only in the MCP bridge."
+    - id: REQ-SEC-005
+      text: "The MCP bridge MUST NOT advertise a tool whose underlying LSP capability is not declared. observed: `domainforge/rename-preview` is advertised while rename_provider is absent (FM-MCP-OVERREACH)."
+    - id: REQ-SEC-006
+      text: "Configured external binary paths MUST be validated before execution and MUST NOT be taken from untrusted workspace files without confirmation."
+
+  performance:
+    - id: REQ-PERF-001
+      text: "Syntax-tier response (parse + publish syntax diagnostics) MUST NOT be gated on envelope resolution."
+    - id: REQ-PERF-002
+      text: "Envelope re-resolution MUST be debounced and superseded resolutions MUST be cancelled."
+    - id: REQ-PERF-003
+      text: "Representation-tier request handlers MUST answer from cache without re-resolving."
+    - id: REQ-PERF-004
+      text: "All caches MUST be bounded with a declared eviction policy."
+    - id: REQ-PERF-005
+      text: "Cold-start MUST NOT block `initialize`; the server MUST report capabilities immediately and resolve the workspace in the background with progress reporting."
+    - id: REQ-PERF-006
+      text: "Envelope resolution cost MUST be measured on a representative multi-module fixture and recorded. If it exceeds the debounce budget, the incremental-resolution upstream contract (DF-C4) becomes required rather than roadmap."
+
+  compatibility:
+    - id: REQ-COMPAT-001
+      text: "The LSP MUST record the domainforge-core version it was built against and expose it in the initialize result."
+    - id: REQ-COMPAT-002
+      text: "The LSP MUST verify at startup that the envelope schema_version and canonicalization_version it receives are within its supported set, and MUST report a typed incompatibility rather than misinterpreting data."
+    - id: REQ-COMPAT-003
+      text: "The existing custom method `sea/astJson` MUST continue to work for the current VS Code extension, or a coordinated client release MUST accompany its removal. observed: the extension calls it in two commands (showAstJson, copyAstJson)."
+    - id: REQ-COMPAT-004
+      text: "Custom methods MUST be namespaced `domainforge/*` and version-negotiated. `textDocument/hoverPlus` MUST be renamed or removed: it occupies the `textDocument/` namespace it does not own and has no consumer (FM-UNUSED-SURFACE)."
+    - id: REQ-COMPAT-005
+      text: "The compatibility contract MUST be machine-checkable in CI: a job MUST build domainforge-lsp against the current domainforge-core and fail on breakage, so a repeat of the 2026-06-20 silent break is impossible."
+
+  vscode_split:
+    - id: REQ-VSC-001
+      text: "Portable capabilities MUST be served over standard LSP methods so non-VS-Code clients get a correct experience."
+    - id: REQ-VSC-002
+      text: "Tree views, graph views, webviews, and multi-step UX MUST live in the VS Code extension and MUST consume server results without re-deriving semantics."
+    - id: REQ-VSC-003
+      text: "The server MUST NOT emit VS Code-specific markup or assume a VS Code renderer."
+
+  observability:
+    - id: REQ-OBSV-001
+      text: "The server MUST log, per envelope resolution: duration, source_set_hash, semantic_closure_hash, declaration count, diagnostic count, cache hit/miss."
+    - id: REQ-OBSV-002
+      text: "Every external process invocation MUST be logged with argv, duration, and exit classification."
+    - id: REQ-OBSV-003
+      text: "Logs MUST NOT contain .sea source content or secrets."
+    - id: REQ-OBSV-004
+      text: "The server MUST expose a `domainforge/status` request returning tier states, versions, and cache statistics, so degraded mode is diagnosable without log access."
+
+  completion_rules:
+    may_claim_completion_only_when:
+      - "cargo build, cargo test, and cargo clippy pass against the pinned domainforge-core."
+      - "The determinism gate (identical inputs -> identical semantic_closure_hash) passes."
+      - "The library/CLI parity gate (in-process resolution hash == `domainforge envelope` hash) passes."
+      - "Degraded-mode tests pass with each optional integration independently absent."
+      - "No offered affordance has an unsatisfied gate in the fixture suite."
+    must_report_incomplete_blocked_or_failed_when:
+      - "An upstream contract (DF-C1..DF-C4, SXR-C1) it depends on is unmet — the dependent capability MUST be reported blocked, not stubbed as working."
+      - "The DeclarationKey<->sxr join has been tested only against fixtures and never against a real sxr ledger."
+      - "Envelope resolution latency has not been measured on a representative workspace."
+
+# -----------------------------------------------------------------------------
+# 13. EXECUTION / INTEGRATION CONTRACT
+# -----------------------------------------------------------------------------
+execution_integration_contract:
+
+  domainforge_contract:
+    kind: "in-process Rust library call (required tier)"
+    existing_surface_used:
+      - "domainforge_core::parser::{parse, parse_to_graph, parse_to_graph_with_options, ParseOptions}  [observed]"
+      - "domainforge_core::formatter  [observed]"
+      - "domainforge_core::application::envelope::{resolve_semantic_envelope_with_packs, semantic_closure_hash, envelope_document_self_hash, CanonicalSemanticEnvelopeDocument, CanonicalDeclarationId, CanonicalResolvedReference}  [observed]"
+      - "domainforge_core::semantic_pack::{PackSet, merge_packs, diff_packs, DiffClassification, validate_graph_with_pack, validate_semantic_pack, resolve_concept, SemanticDiagnostic, SemanticDiagnosticCode, SemanticTruth, ValidationOptions, compute_pack_content_hash, compute_meaning_fingerprint, compute_definition_hash}  [observed]"
+      - "domainforge_core::{ConceptId, Graph, NamespaceRegistry, SemanticVersion, Unit, Dimension, UnitRegistry, ValidationError, SourceRange, Position}  [observed]"
+      - "domainforge_core::primitives::concept_change::ConceptChange  [observed]"
+      - "domainforge_core::policy (three_valued, quantifier, expression)  [observed]"
+      - "domainforge_core::projection::registry  [observed — for enumerating projection consumers]"
+
+    required_upstream_additions:
+      - id: DF-C1
+        name: "Stable crate identity"
+        need: "A version-constrained dependency that survives renames."
+        current_state: >-
+          observed — LSP pins a deleted path; this is the root cause of the
+          outage. observed — domainforge-core IS already published to crates.io
+          (release-crates.yml, deploy.yml, release-please manifest 0.16.0), so
+          the fix requires NO upstream work at all: depend on the published
+          version.
+        shape: >-
+          `domainforge-core = "0.16"` from crates.io, plus an upstream-compat CI
+          job building the LSP against domainforge HEAD, plus an optional
+          `[patch.crates-io]` for local co-development. See OQ-8.
+        blocking: "Everything. Nothing else can proceed."
+        status: "UNBLOCKED — no upstream permission needed; this is LSP-side work only."
+
+      - id: DF-C1a
+        name: "Expose source-map assembly and registry discovery"
+        need: >-
+          The LSP must build the same (entry_logical_path, source_map) pair the
+          CLI builds, from the active document, without reimplementing it.
+        current_state: >-
+          observed — module/resolver.rs:399 `pub(crate) fn
+          source_map_from_filesystem(...)` is crate-private. The CLI uses it at
+          cli/envelope.rs:29 after `NamespaceRegistry::discover(&target)`.
+        shape: >-
+          Make `source_map_from_filesystem` public (and confirm
+          `NamespaceRegistry::discover` is public). Additive, no semantic change,
+          no hash impact. Optionally add an in-memory overlay parameter so the
+          LSP can substitute open buffer contents for on-disk contents without
+          writing a temp tree.
+        blocking: "T02's SourceMap assembly. Small, but genuinely blocking."
+
+      - id: DF-C2
+        name: "Envelope schema/canonicalization version exposure"
+        need: "The LSP must detect version skew rather than misread data."
+        current_state: "observed — ENVELOPE_SCHEMA_VERSION, LANGUAGE_SCHEMA_VERSION, INTERPRETATION_VERSION and CANONICALIZATION_VERSION ('domainforge-canonicalization/v1') exist as constants and appear in the document; they are readable already."
+        shape: "Confirm these are public and semver-meaningful. Likely a no-op or a small `pub` change."
+        blocking: "REQ-COMPAT-002."
+
+      - id: DF-C3
+        name: "Span sidecar + canonical DeclarationKey string form"
+        need: >-
+          Map cursor position <-> CanonicalDeclarationId without re-deriving
+          resolution, and produce a key byte-identical to sxr's DeclKey string.
+        current_state: >-
+          observed — spans exist as Spanned<T>{line, column} and are in hand at
+          envelope build time (envelope.rs:684) but are dropped. The canonical
+          string form exists only in sxr (types.rs:49 as_str()). DomainForge
+          emits the structured enum, never the string.
+        shape: >-
+          A separate, optional sidecar structure (NOT inside the hashed envelope
+          payload — adding spans to the envelope would change semantic_closure_hash
+          and break every existing snapshot) mapping each CanonicalDeclarationId
+          to (logical_module_id, SourceRange) for its declaration site, plus
+          reference-site ranges for each CanonicalResolvedReference. Plus a
+          `Display`/`as_str` on CanonicalDeclarationId matching sxr's encoding
+          exactly, with a cross-repo test asserting byte equality.
+        blocking: "REQ-ID-001, REQ-ID-007, and every position-keyed semantic feature. This is the single most important upstream item."
+        risk_if_done_wrong: "Putting spans inside the hashed envelope would make formatting change the closure hash, destroying the identity property the whole design rests on."
+
+      - id: DF-C4
+        name: "Incremental / partial envelope resolution"
+        level: roadmap
+        need: "Editor-latency resolution on large workspaces."
+        current_state: "observed — only whole-source-map resolution exists, with enforce_source_map_budget implying a bounded input."
+        shape: "Deferred until REQ-PERF-006 measurement shows it is needed. Until then, debounce + cache is the mitigation."
+        blocking: "Nothing now. Promoted to required only if measurement demands it."
+
+  realitytrace_contract:
+    kind: "external process, read-only, out-of-band (optional tier)"
+    existing_surface_used:
+      - "`sxr --json explain <record_id>`  [observed — appears read-only; MUST be confirmed against its implementation before use]"
+      - "`sxr --json semantic status --repo <r>`  [observed — status read; confirm no rebuild]"
+      - "`sxr --json projections status --repo <r>`  [observed — status read; confirm no rebuild]"
+      - "`sxr --json context --repo <r> --failure <f>`  [observed — confirm no rebuild]"
+    existing_surface_explicitly_rejected:
+      - command: "`sxr --json query evidence --repo <r> --entity <e>`"
+        why: >-
+          observed — NOT side-effect free. commands.rs:2378 calls
+          projections::rebuild() before answering. Calling it from the editor
+          would make inspection mutate sxr state, violating REQ-OBS-001 and
+          REQ-SEC-001. The LSP MUST NOT invoke it, even behind an explicit user
+          action, until a read-only path exists.
+    surface_audit_requirement: >-
+      Before the Observation Port invokes ANY sxr subcommand, the implementer
+      MUST read that subcommand's implementation and confirm it performs no
+      write. The `query evidence` case proves that a command's name and its
+      `query`/`status` grouping are not evidence of read-only behavior.
+    record_vocabulary_projected:
+      note: "observed — sxr-core/src/record_kinds.csv, 26 record kinds + header."
+      relevant_to_editor:
+        - "semantic.snapshot — declared State + DomainForge validation result + Representation D; subject_refs include declaration refs."
+        - "semantic.diff — State/Representation difference between two snapshots."
+        - "semantic.identity_drift — identity-binding difference; 'revalidation questions only'."
+        - "verification.contract_imported — DomainForge Semantic Verification Contract: CEP Questions, Claim/obligation bindings, Evidence requirements. This is the declared->evaluation bridge."
+        - "question.declared / threshold.declared — declared evaluation context."
+        - "claim.made — 'asserted, not evidenced'."
+        - "observation.recorded — 'yes only after qualification'."
+        - "evidence.created — question-bound Evidence."
+        - "settlement.registered — 'runtime settlement; not approval'."
+        - "residual.computed — question-bound declared/observed difference; 'derived; never causal authority'."
+        - "diagnostic.hypothesis / diagnostic.settled — 'hypothesis, not verdict' / supported locus only."
+        - "proposal.raised — 'no approval/promotion by itself'."
+      rule: >-
+        The authority_class column in record_kinds.csv states, per record, what
+        the record is NOT. The LSP MUST carry those qualifications into its
+        projections verbatim. Rendering `claim.made` as if it were evidence, or
+        `settlement.registered` as approval, is precisely the collapse this
+        ecosystem exists to prevent.
+
+    required_upstream_additions:
+      - id: SXR-C1
+        name: "Declaration-keyed read query"
+        need: "Given a DeclKey, return the records whose subject_refs include it, with kind, ordinal, snapshot binding, and staleness against a given checkpoint hash."
+        current_state: >-
+          observed — QueryCmds has only `Evidence { repo, entity }`, `entity` is
+          not documented as accepting a DeclKey, AND that command rebuilds
+          projections before answering (CLAIM-009), so it is unusable from an
+          editor at any privilege level.
+        invariant_to_preserve: >-
+          CONFIRMED BY MAINTAINER (2026-09-03): the `ensure_committed` +
+          `projections::rebuild` sequence is a DELIBERATE correctness invariant,
+          not incidental convenience. F-19b ("a queried entity must be committed,
+          not pending") exists so a caller can never read a projection that does
+          not reflect committed ledger state. A read-only path MUST NOT simply
+          skip it — doing so would let the editor read a stale projection and
+          present it as current, which is the precise collapse
+          AFF-INTEGRATION-UNAVAILABLE and REQ-OBS-006 exist to prevent.
+        shape: >-
+          A side-effect-free `sxr --json query declaration --repo <r> --decl
+          <declkey> [--since <checkpoint>]` that reads the existing projection
+          store WITHOUT rebuilding, and returns a TYPED freshness state
+          alongside the records — at minimum: current (projection reflects
+          committed head) | stale{projection_head, ledger_head} | absent
+          (never built) | pending{uncommitted_entities}. The caller decides what
+          to do about staleness; the command never decides for it.
+          Rebuild remains available as today's separate, explicit,
+          state-changing command.
+        blocking: "All observation-tier and evaluation-tier editor features."
+        rationale: >-
+          This preserves the F-19b invariant by making it VISIBLE rather than by
+          enforcing it through a write. The invariant said 'do not serve
+          uncommitted state'; the typed response says 'here is the state, and
+          here is exactly how far behind it is'. That is strictly more
+          information than a rebuild-then-answer, and it is honest about
+          staleness instead of silently eliminating it.
+          The LSP MUST render stale and pending as such (REQ-OBS-006), never
+          collapsing them into current.
+      - id: SXR-C2
+        name: "Cheap availability/capability probe"
+        need: "Determine tier availability at startup without a full query."
+        current_state: "observed — `sxr doctor` exists; its output contract for programmatic use is unverified."
+        shape: "Confirm `sxr --json doctor` is stable and machine-readable, or add a `--json` capability probe."
+        blocking: "REQ-DEG-004 reporting quality (not correctness)."
+
+  cep_contract:
+    kind: "specification only — no runtime call"
+    rule: >-
+      observed (CLAIM-006): the cep repository provides no per-declaration
+      evaluation API. The LSP MUST NOT create one, MUST NOT shell out to `cep`,
+      and MUST NOT imply that CEP was consulted. CEP's role in this design is
+      normative: it fixes the distinctions (CEP-0001 ontology, CEP-0003 state,
+      CEP-0005 question, CEP-0006 evidence, CEP-0007 settlement, CEP-0008
+      semantic envelope, CEP-0010 conformance) that REQ-EVAL-003..005 enforce.
+    classification:
+      implementable_now: "Projecting sxr's CEP-shaped records with their distinctions preserved."
+      requires_adapter: "Nothing — sxr already is the adapter."
+      requires_new_cross_project_contract: "SXR-C1 (declaration-keyed query)."
+      future_capability: "Any live evaluation invoked from the editor. Not designed here; no callable authority exists."
+
+  external_side_effects:
+    may_change:
+      - "The LSP's own in-memory caches."
+      - "Files in the workspace, only via an explicitly confirmed, user-initiated code action or command."
+    must_not_change:
+      - "The RealityTrace ledger (append is never performed by the LSP)."
+      - "Semantic packs, except through an explicit governed rebuild action."
+      - "Any file during a passive request."
+      - "Anything at all when the user only hovers, reads diagnostics, or opens a file."
+
+# -----------------------------------------------------------------------------
+# 14. LSP CAPABILITY MATRIX
+# -----------------------------------------------------------------------------
+# classification: high_value_now | useful_later | not_semantically_meaningful
+#                 | better_in_vscode_client | requires_upstream_first
+lsp_capability_matrix:
+
+  - capability: "textDocument/didOpen|didChange|didClose|didSave (incremental sync)"
+    status_now: "implemented (FULL sync only)  [observed: capabilities.rs TextDocumentSyncKind::FULL]"
+    classification: high_value_now
+    semantic_job: "Keep the SourceMap accurate. Move to INCREMENTAL to reduce per-keystroke cost."
+
+  - capability: "textDocument/publishDiagnostics"
+    status_now: "implemented, untyped"
+    classification: high_value_now
+    semantic_job: "Carry the typed taxonomy (REQ-DIAG-*). The single highest-value upgrade."
+
+  - capability: "textDocument/formatting"
+    status_now: "implemented, delegates to core"
+    classification: high_value_now
+    semantic_job: "Canonical formatting; also the proof surface for REQ-ID-003 (format must not change identity)."
+
+  - capability: "textDocument/hover"
+    status_now: "implemented (207 + 1146 + 323 LOC), buffer-local"
+    classification: high_value_now
+    semantic_job: "Progressive disclosure of identity, governance, and status. See hover_information_architecture."
+
+  - capability: "textDocument/definition"
+    status_now: "implemented, single-file"
+    classification: high_value_now
+    semantic_job: "Cross-file navigation via resolved_references. Requires DF-C3."
+
+  - capability: "textDocument/references"
+    status_now: "implemented, single-file"
+    classification: high_value_now
+    semantic_job: "Directly answers 'what depends on this'. resolved_references gives this canonically."
+
+  - capability: "textDocument/documentSymbol"
+    status_now: "absent"
+    classification: high_value_now
+    semantic_job: "Structural navigation; works at T0 from the AST alone. Cheap, no upstream dependency."
+
+  - capability: "workspace/symbol"
+    status_now: "absent"
+    classification: high_value_now
+    semantic_job: "Find a declaration by name across the workspace from the envelope's declaration list."
+
+  - capability: "textDocument/codeAction (+ resolve)"
+    status_now: "implemented (967 LOC), quickfix only, heuristic"
+    classification: high_value_now
+    semantic_job: "The primary affordance surface. MUST be rebuilt on AffordanceRecord with gate enforcement. codeAction/resolve keeps offer-time cheap and defers expensive computation to selection."
+
+  - capability: "textDocument/codeLens (+ resolve)"
+    status_now: "absent"
+    classification: high_value_now
+    semantic_job: "Per-declaration governance and status summary (pack status, dependents count, evolution class, evidence presence) — the natural carrier for deferred observation results, since a lens can be refreshed asynchronously."
+
+  - capability: "textDocument/inlayHint"
+    status_now: "absent"
+    classification: high_value_now
+    semantic_job: "Units/dimensions on quantities and metrics; resolved namespace on unqualified references. Dense, low-noise, purely local."
+
+  - capability: "textDocument/semanticTokens"
+    status_now: "absent"
+    classification: high_value_now
+    semantic_job: "Distinguish declaration kinds and, critically, resolved vs unresolved references — a semantic distinction TextMate grammar cannot make."
+
+  - capability: "textDocument/prepareRename + rename"
+    status_now: "absent as LSP capability, but advertised via MCP  [observed: FM-MCP-OVERREACH]"
+    classification: requires_upstream_first
+    semantic_job: >-
+      A rename in .sea changes ConceptId, hence identity, hence every downstream
+      binding (CLAIM-004). Offering a plain textual rename would silently break
+      trace continuity. Rename MUST be gated behind the ConceptChange affordance.
+      Until that is designed, prepareRename SHOULD return an explanation rather
+      than a range, and the MCP tool MUST be withdrawn (REQ-SEC-005).
+
+  - capability: "textDocument/completion (+ resolve)"
+    status_now: "implemented (206 + 148 LOC)"
+    classification: high_value_now
+    semantic_job: "Completion from the envelope's declaration set and pack concepts, with status (deprecated/proposed/rejected) surfaced. resolve defers documentation lookup."
+
+  - capability: "textDocument/documentHighlight"
+    status_now: "absent"
+    classification: useful_later
+    semantic_job: "Same-identity occurrences in the current file. Cheap once references exist."
+
+  - capability: "textDocument/foldingRange, selectionRange"
+    status_now: "absent"
+    classification: useful_later
+    semantic_job: "Structural ergonomics from the AST. Low cost, low consequence."
+
+  - capability: "textDocument/documentLink"
+    status_now: "absent"
+    classification: useful_later
+    semantic_job: "Navigate import statements to their modules."
+
+  - capability: "textDocument/typeDefinition"
+    status_now: "absent"
+    classification: not_semantically_meaningful
+    semantic_job: "SEA has no type/value distinction that this maps to. Deliberately omitted."
+
+  - capability: "textDocument/implementation"
+    status_now: "absent"
+    classification: useful_later
+    semantic_job: "Could mean pattern -> instances, or entity -> role bindings. Only worth adding if a single unambiguous meaning is chosen; ambiguous mapping is worse than absence."
+
+  - capability: "textDocument/signatureHelp"
+    status_now: "absent"
+    classification: not_semantically_meaningful
+    semantic_job: "SEA declarations are not call sites. Deliberately omitted."
+
+  - capability: "textDocument/linkedEditingRange"
+    status_now: "absent"
+    classification: not_semantically_meaningful
+    semantic_job: "No paired-token construct. Deliberately omitted."
+
+  - capability: "textDocument/onTypeFormatting"
+    status_now: "absent"
+    classification: not_semantically_meaningful
+    semantic_job: "Full-document canonical formatting already exists; on-type formatting fights it. Deliberately omitted."
+
+  - capability: "textDocument/rangeFormatting"
+    status_now: "absent"
+    classification: useful_later
+    semantic_job: "Only if the core formatter supports range-stable output; otherwise it would produce non-canonical results."
+
+  - capability: "callHierarchy"
+    status_now: "absent"
+    classification: useful_later
+    semantic_job: "Maps naturally to flows (producer/consumer chains), not to calls. Valuable but only after the envelope index is stable."
+
+  - capability: "typeHierarchy"
+    status_now: "absent"
+    classification: useful_later
+    semantic_job: "Maps to pattern/entity specialization if such a relation exists in the model; verify before building."
+
+  - capability: "workspace/diagnostic (pull diagnostics)"
+    status_now: "absent"
+    classification: high_value_now
+    semantic_job: >-
+      Essential here: many conditions (pack inconsistency, evolution obligation,
+      integration unavailable) are workspace-scoped, not file-scoped, and push
+      diagnostics have no good home for them. Pull diagnostics also let the
+      client control when expensive tiers are computed.
+
+  - capability: "workspace/didChangeWatchedFiles + fileOperations"
+    status_now: "absent"
+    classification: high_value_now
+    semantic_job: "Detect .sea files changed outside the editor, and pack/registry changes, to invalidate the envelope. Without this the index silently goes stale."
+
+  - capability: "workspace/didChangeConfiguration + workspace/configuration"
+    status_now: "implemented"
+    classification: high_value_now
+    semantic_job: "Tier enablement and reload without restart."
+
+  - capability: "workspace/workspaceFolders"
+    status_now: "absent"
+    classification: useful_later
+    semantic_job: "Multi-root support. Deferred until the single-entry question (OQ-3) is resolved."
+
+  - capability: "window/workDoneProgress"
+    status_now: "absent"
+    classification: high_value_now
+    semantic_job: "Cold-start indexing must be visible, or the server appears hung (REQ-PERF-005)."
+
+  - capability: "$/cancelRequest and request cancellation"
+    status_now: "absent"
+    classification: high_value_now
+    semantic_job: "Required by REQ-IDX-005 and REQ-OBS-004. Superseded work must actually stop."
+
+  - capability: "dynamic registration"
+    status_now: "absent"
+    classification: useful_later
+    semantic_job: "Register observation-tier capabilities only when that tier is available, so clients do not offer dead UI."
+
+  - capability: "workspace/executeCommand"
+    status_now: "absent on server; extension has 5 client-side commands"
+    classification: high_value_now
+    semantic_job: "The execution mechanism for governed affordances (REQ-AFF-004 gate re-check happens here)."
+
+  - capability: "custom: domainforge/status"
+    status_now: "absent"
+    classification: high_value_now
+    semantic_job: "Tier/version/cache introspection (REQ-OBSV-004). Justified: no standard method carries it."
+
+  - capability: "custom: domainforge/semanticInfo"
+    status_now: "partially exists as textDocument/hoverPlus (unused)"
+    classification: better_in_vscode_client
+    semantic_job: >-
+      Structured (non-markdown) semantic facts for a rich client to render as
+      trees/graphs. Justified only because hover markdown cannot carry structure.
+      MUST be renamed out of the textDocument/ namespace (REQ-COMPAT-004).
+
+  - capability: "custom: sea/astJson"
+    status_now: "implemented and used by the extension  [observed]"
+    classification: high_value_now
+    semantic_job: "Debug/inspection. MUST be preserved or migrated with a coordinated client release (REQ-COMPAT-003)."
+
+vscode_specific_capability_matrix:
+  - capability: "Semantic impact tree view (dependents of a declaration)"
+    rationale: "Hierarchical, persistent, multi-select. LSP has no such surface."
+    server_provides: "domainforge/semanticInfo impact projection."
+  - capability: "Semantic graph / import graph webview"
+    rationale: "Graph rendering is inherently client-side."
+    server_provides: "envelope import_graph + resolved_references, as data."
+  - capability: "Evidence & settlement panel"
+    rationale: "Record lists with drill-down; needs its own viewport."
+    server_provides: "observation/evaluation projections keyed by DeclarationKey."
+  - capability: "Semantic diff viewer"
+    rationale: "Diff UX belongs to the editor."
+    server_provides: "diff_packs output as structured data."
+  - capability: "Tier status bar item"
+    rationale: "Persistent honest indicator of which tiers are live."
+    server_provides: "domainforge/status."
+  - rule: >-
+      Each of these MUST be a pure projection of server data. The extension MUST
+      NOT parse .sea, compute identity, or query sxr directly.
+
+# -----------------------------------------------------------------------------
+# 15. HOVER INFORMATION ARCHITECTURE
+# -----------------------------------------------------------------------------
+hover_information_architecture:
+  principle: >-
+    Hover answers "what is this and is anything wrong with it". It is not a
+    dashboard. Everything requiring scroll, structure, or navigation belongs
+    elsewhere.
+
+  hover_tiers:
+    always: "kind, canonical name, namespace, one-line definition, resolution status."
+    conditional_only_if_notable:
+      - "pack status when not Approved/Signed (deprecated, proposed, unreviewed, ambiguous)."
+      - "unit/dimension when the declaration carries one."
+      - "evolution status when the meaning fingerprint differs from the pack baseline."
+      - "observation/evaluation status ONLY as a one-line badge with a count, never as a record list."
+    never_in_hover:
+      - "Full dependent lists (-> references / impact tree)."
+      - "Full trace or evidence records (-> panel, via a command)."
+      - "Hashes in full (-> a short prefix at most, full value via a command)."
+      - "Semantic diffs (-> diff viewer)."
+
+  surface_assignment:
+    hover: "Identity + definition + exceptional status."
+    inlay_hint: "Units, dimensions, resolved namespace of unqualified references."
+    code_lens: "Per-declaration counts and asynchronous status: dependents, evolution class, evidence presence. The right home for deferred observation results because lenses refresh naturally."
+    diagnostics: "Anything actionable and wrong."
+    code_action: "The governed next move."
+    semantic_tokens: "Resolved vs unresolved reference distinction."
+    peek_navigation: "definition, references."
+    command: "Anything expensive, external, or governed."
+    vscode_tree_graph_panel: "Anything hierarchical or relational."
+
+# -----------------------------------------------------------------------------
+# 16. AFFORDANCE CATALOGUE (affordance test applied)
+# -----------------------------------------------------------------------------
+# Each entry answers: trigger, representation, evidence source, action, gate,
+# settlement, failure mode. Tier T1 = domainforge only; T3 = requires sxr.
+affordance_catalogue:
+
+  - id: AFF-UNRESOLVED-REF
+    tier: T1
+    trigger: "A CanonicalResolvedReference target is absent, or an ApplicationDiagnostic reports an unresolved reference."
+    representation: "Distinguishes 'not declared anywhere' from 'declared but not imported' from 'ambiguous across namespaces' — three different problems that look identical today."
+    evidence_source: "Envelope resolved_references + namespace_bindings + ApplicationDiagnostic.context.field_path."
+    action: "Create declaration | add import | qualify the reference."
+    gate: "available (local, deterministic text edit). Blocked if the envelope is unresolved (cannot tell which of the three it is) — then the action MUST NOT be offered."
+    settlement: "Re-resolution succeeds and the diagnostic clears."
+    failure_mode_prevented: "Offering 'create declaration' when the symbol exists but is unimported, which creates a duplicate concept and a real identity collision."
+
+  - id: AFF-PACK-STATUS
+    tier: T1
+    trigger: "SemanticDiagnosticCode in {DeprecatedConcept, ProposedConcept, RejectedConcept, UnreviewedConcept, AmbiguousAlias, AliasConflict}."
+    representation: "Governance state of the term, distinct from whether it parses."
+    evidence_source: "domainforge_core::semantic_pack::resolve_concept against the configured PackSet."
+    action: "Show the concept definition, its status, and its approved alternative."
+    gate: "informational. Substituting the term automatically is NOT offered: term choice is a governance decision, not a refactor."
+    settlement: "The author changes the term and the diagnostic clears."
+    failure_mode_prevented: "Auto-fixing a governance signal, which converts a deliberate review gate into a silent edit."
+
+  - id: AFF-PACK-INTEGRITY
+    tier: T1
+    trigger: "SemanticDiagnosticCode in {PackUnavailable, PackHashMismatch, PackVersionMismatch, PackSignatureInvalid, PackUnsigned, PackSetConflict}."
+    representation: "The pack the model is being validated against is not the pack that was approved."
+    evidence_source: "compute_pack_content_hash vs configured content_hash; PackTrust.signature_state."
+    action: "Open pack status; rebuild or re-fetch the pack."
+    gate: "requires_authority for anything that changes trust state. A signature failure MUST NOT be offered a 'fix' — only an inspection."
+    settlement: "Recomputed content hash matches the configured hash."
+    failure_mode_prevented: "Presenting a signature failure as a fixable lint, which would train users to dismiss a trust signal."
+
+  - id: AFF-MEANING-CHANGED
+    tier: T1
+    trigger: "compute_meaning_fingerprint / compute_definition_hash differs from the pack baseline for a concept the model uses."
+    representation: "The meaning of a term changed, even though the source text using it did not."
+    evidence_source: "semantic_pack::diff_packs -> DiffClassification."
+    action: "View the semantic diff for this concept."
+    gate: "available (read-only, local)."
+    settlement: "The user has seen the diff; classification is displayed verbatim from DiffClassification."
+    failure_mode_prevented: "Presenting DefinitionalChange and Breaking identically — the LSP MUST use upstream's classification, not a severity of its own (REQ-EVO-001)."
+
+  - id: AFF-CONCEPTCHANGE
+    tier: T1
+    trigger: "DiffClassification is Breaking or GovernanceCritical, or a rename would change a ConceptId."
+    representation: "Distinguishes a change that already has a governing ConceptChange from one that does not."
+    evidence_source: "Envelope CanonicalConceptChangeDecl entries + primitives::concept_change::ConceptChange."
+    action: "Open the existing ConceptChange, or draft a new one."
+    gate: >-
+      'Open existing' = available. 'Create new' = requires_authority: authoring a
+      ConceptChange is a governance act. The LSP MAY scaffold the declaration
+      text; it MUST NOT imply the change is thereby approved.
+    settlement: "A ConceptChange declaration exists in the model covering from_version -> to_version and the envelope resolves."
+    failure_mode_prevented: "A one-click 'fix breaking change' that produces a governance artifact nobody reviewed."
+
+  - id: AFF-IMPACT
+    tier: T1
+    trigger: "Cursor on a declaration with incoming resolved_references."
+    representation: "The transitive dependent set, separated into same-module / cross-module / projection consumers."
+    evidence_source: "Envelope resolved_references (reverse index) + projection::registry."
+    action: "Open the impact tree; preview affected projections."
+    gate: "available for inspection. 'Regenerate projection' is governed execution (see AFF-STALE-PROJECTION)."
+    settlement: "N/A — inspection only."
+    failure_mode_prevented: "Presenting a static reference count as a claim about runtime blast radius. The projection MUST be labelled 'declared dependencies', not 'impact'."
+
+  - id: AFF-STALE-PROJECTION
+    tier: T1
+    trigger: "A generated artifact's recorded source identity differs from the current semantic_closure_hash."
+    representation: "Generated output no longer corresponds to the model."
+    evidence_source: "Closure hash comparison against artifact provenance (requires artifacts to record it — see OQ-5)."
+    action: "Regenerate the projection."
+    gate: "governed execution — requires explicit confirmation; writes files (REQ-SEC-003)."
+    settlement: "Regenerated artifact records the current closure hash."
+    failure_mode_prevented: "Silent regeneration during a passive request. Explicitly forbidden by REQ-SEC-001."
+
+  - id: AFF-IDENTITY-DRIFT
+    tier: T3
+    trigger: "The latest sxr semantic.snapshot for this repo carries a checkpoint hash differing from the current semantic_closure_hash, or a semantic.identity_drift record exists."
+    representation: "Reality was observed against a different version of the model than the one on screen. This is the core declared-vs-observed distinction."
+    evidence_source: "sxr semantic.snapshot / semantic.identity_drift records via SXR-C1."
+    action: "Inspect the drift; open the snapshot the observations were made against."
+    gate: >-
+      available (read-only) when the observation tier is available; otherwise
+      unavailable with a typed reason. MUST NOT be offered when sxr is disabled.
+    settlement: >-
+      Not settleable by the LSP. observed — record_kinds.csv marks
+      semantic.identity_drift 'revalidation questions only'. The LSP MUST
+      surface that a new snapshot is needed, and MUST NOT create one.
+    failure_mode_prevented: >-
+      Rendering stale observations as if they described the current model. Every
+      observation MUST carry the checkpoint hash it was computed against
+      (REQ-OBS-006).
+
+  - id: AFF-EVIDENCE-PRESENT
+    tier: T3
+    trigger: "evidence.created records exist whose subject_refs include this DeclarationKey."
+    representation: "Distinguishes 'evidence exists' from 'a claim was made' from 'settled'."
+    evidence_source: "sxr evidence.created / claim.made / settlement.registered."
+    action: "Open the evidence; open the settlement."
+    gate: "available (read-only)."
+    settlement: "N/A — inspection."
+    failure_mode_prevented: >-
+      Rendering claim.made as evidence. observed — record_kinds.csv authority_class
+      for claim.made is literally 'asserted, not evidenced'. The projection MUST
+      preserve that word.
+
+  - id: AFF-EVIDENCE-ABSENT
+    tier: T3
+    trigger: "A verification.contract_imported record declares an evidence requirement bound to this declaration, and no qualifying evidence.created record exists."
+    representation: "A declared evidence obligation is unmet — an instrumentation gap, NOT a model error."
+    evidence_source: "verification.contract_imported obligation bindings vs evidence.created."
+    action: "Inspect the obligation."
+    gate: >-
+      requires_evidence. The LSP MUST NOT offer to run the verification: that is
+      a governed execution owned by sxr's plan/run machinery, with its own
+      authority.
+    settlement: "Not settleable from the editor."
+    failure_mode_prevented: >-
+      Reporting an unmet obligation as a model defect (severity Error). Forbidden
+      by REQ-DIAG-002 — it is an observation-tier fact and must be Information.
+
+  - id: AFF-RESIDUAL
+    tier: T3
+    trigger: "A residual.computed record binds this declaration."
+    representation: "A question-bound difference between declared and observed."
+    evidence_source: "sxr residual.computed."
+    action: "Inspect the residual and its question."
+    gate: "available (read-only)."
+    settlement: >-
+      Not settleable by the LSP. observed — residual.computed is 'derived; never
+      causal authority' and permits 'diagnostic settlement only'. The LSP MUST
+      NOT suggest a code fix from a residual: that would assert causation the
+      record explicitly disclaims.
+    failure_mode_prevented: >-
+      Turning a residual into a quick-fix. This is the most tempting and most
+      wrong feature in the whole design.
+
+  - id: AFF-INTEGRATION-UNAVAILABLE
+    tier: any
+    trigger: "An optional tier is in a non-available IntegrationState."
+    representation: "Distinguishes 'no evidence exists' from 'we could not look'."
+    evidence_source: "IntegrationState."
+    action: "Show the reason; open configuration."
+    gate: "informational."
+    settlement: "Tier becomes available."
+    failure_mode_prevented: >-
+      The single most dangerous collapse available to this system: rendering
+      'could not query' as 'nothing found'. REQ-DEG-004 exists for this.
+
+# -----------------------------------------------------------------------------
+# 17. FAILURE MODEL AND RECOVERY
+# -----------------------------------------------------------------------------
+failure_model_and_recovery:
+  failure_classes:
+    - class: "build_incompatibility"
+      detection: "Compile time / CI."
+      response: "Fail loudly. MUST NOT be degraded at runtime."
+    - class: "envelope_unresolvable"
+      detection: "resolve_* returns Vec<ApplicationDiagnostic>."
+      response: "Publish typed envelope diagnostics; retain the last good envelope marked stale; keep T0 fully functional."
+    - class: "span_sidecar_absent"
+      detection: "DF-C3 unavailable."
+      response: "Position-keyed semantic features report degraded. MUST NOT fall back to name matching (REQ-ID-007)."
+    - class: "pack_untrusted"
+      detection: "PackTrust signature/approval state."
+      response: "Typed diagnostic; no automatic remediation offered."
+    - class: "integration_unavailable"
+      detection: "Probe or query failure/timeout."
+      response: "Typed IntegrationState, reported once at workspace level. Never an error on a declaration."
+    - class: "version_skew"
+      detection: "schema_version / canonicalization_version outside supported set."
+      response: "Disable the affected tier with an explicit incompatibility message. MUST NOT attempt best-effort interpretation."
+    - class: "panic_in_a_handler"
+      detection: "Runtime."
+      response: "Isolate: the request fails, the server survives. A panic MUST NOT terminate the session."
+
+  safe_failure_requirements:
+    - "Failure of any optional tier MUST leave representation-tier behavior bit-identical."
+    - "Every failure MUST be attributable to a source, never rendered as an unexplained absence."
+    - "The server MUST NOT retry an external command automatically more than a bounded number of times, and MUST back off."
+
+  unsafe_behaviors:
+    - "Falling back to heuristic name matching when canonical identity is unavailable."
+    - "Presenting an unavailable integration as an empty result."
+    - "Publishing observation or evaluation findings as Error-severity diagnostics."
+    - "Executing anything during a passive request."
+    - "Writing to the RealityTrace ledger."
+
+  recoverable_failures:
+    - "Envelope resolution failure — recovers on the next successful edit."
+    - "sxr timeout — recovers on the next enrichment cycle."
+    - "Config error — recovers on didChangeConfiguration."
+
+  nonrecoverable_or_operator_required:
+    - "domainforge-core version incompatibility — requires a dependency update."
+    - "Missing span sidecar — requires the upstream DF-C3 change."
+    - "Missing declaration-keyed sxr query — requires SXR-C1."
+
+# -----------------------------------------------------------------------------
+# 18. SECURITY, SAFETY, TRUST BOUNDARIES
+# -----------------------------------------------------------------------------
+security_safety_trust_boundaries:
+  trusted_inputs:
+    - "domainforge-core library return values (in-process, same trust domain)."
+  untrusted_inputs:
+    - ".sea source content (user/workspace-controlled)."
+    - "Semantic pack files (verify trust state; do not assume signature validity)."
+    - "Workspace configuration files (may set binary paths — REQ-SEC-006)."
+    - "sxr JSON output (parse defensively; malformed output MUST be an error, never coerced into a valid state — the discipline sxr-df already applies)."
+  trusted_actors:
+    - "The user issuing an explicit executeCommand."
+  privileged_operations:
+    - "Spawning the sxr binary."
+    - "Writing workspace files (code action edits, regeneration)."
+    - "Rebuilding semantic packs."
+  mandatory_requirements:
+    - "REQ-SEC-001 (no side effects on passive requests) is the primary security invariant of this design."
+    - "Path access confined to declared workspace roots, reusing the guardrails.rs canonicalization discipline."
+    - "Rate limiting on any background external query."
+    - "No network access from the server."
+  secret_handling:
+    - "The server handles no secrets. It MUST NOT read credential files and MUST NOT log source content."
+  authorization_requirements:
+    - "The LSP holds no authority. It MUST NOT infer permission from the ability to invoke a command. Access is not capability — this is CEP's own distinction and the LSP must honour it."
+
+  trust_boundary_diagram:
+    mermaid: |-
+      flowchart LR
+        U["User action\n(executeCommand)"] -->|explicit| GOV["Governed execution"]
+        P["Passive requests\n(hover, diagnostics, lens)"] -->|"MUST be side-effect free"| RO["Read-only projection"]
+        RO --> CACHE["In-memory caches"]
+        GOV --> FS["Workspace files"]
+        GOV --> PROC["sxr (read-only) / pack rebuild"]
+        RO -.->|"never"| FS
+        RO -.->|"never"| PROC
+
+# -----------------------------------------------------------------------------
+# 19. VALIDATION MATRIX
+# -----------------------------------------------------------------------------
+validation_matrix:
+  core_conformance:
+    - area: "Outcome"
+      test: "Multi-module fixture workspace; resolve envelope; assert declaration set, import graph, and resolved_references match a golden file."
+      expected: "Exact match."
+      evidence: "tests/fixtures/workspace_multi_module/, golden JSON."
+
+    - area: "Canonical parity (anti-drift)"
+      test: "In-process resolve_semantic_envelope_with_packs vs `domainforge envelope --emit both` on the same sources."
+      expected: "Identical semantic_closure_hash."
+      evidence: "Parity test; this is the gate that would have caught the 2026-06 break."
+
+    - area: "Determinism"
+      test: "Resolve the same source map 20 times, and in randomized file order."
+      expected: "Identical semantic_closure_hash every time."
+      evidence: "Determinism test."
+
+    - area: "Identity stability"
+      test: "Format the fixture (whitespace only); move a file preserving logical_module_id; add a comment."
+      expected: "No DeclarationKey changes; no closure hash change."
+      evidence: "Identity stability test — settles REQ-ID-003/004."
+
+    - area: "Identity sensitivity"
+      test: "Rename a concept; change its namespace."
+      expected: "DeclarationKey changes, and the ConceptChange affordance appears."
+      evidence: "Identity sensitivity test — settles REQ-ID-005."
+
+    - area: "Cross-repo key equality"
+      test: "For each declaration in the fixture, assert the LSP's DeclarationKey string equals sxr DeclKey::as_str() for the same declaration."
+      expected: "Byte equality."
+      evidence: "Cross-repo test. If this fails the whole observation tier is nominal only."
+
+    - area: "Input validation"
+      test: "Malformed .sea; source map exceeding the budget; non-UTF8; a 10k-line file."
+      expected: "Typed diagnostics; no panic; T0 still serves."
+      evidence: "Robustness tests."
+
+    - area: "Config errors"
+      test: "Missing entry; unreadable pack; sxr binary path pointing at a nonexistent file."
+      expected: "Typed IntegrationState per tier; correct blast radius; server survives."
+      evidence: "Config error tests."
+
+    - area: "Startup/preflight"
+      test: "initialize with sxr absent."
+      expected: "initialize returns promptly with capabilities and honest tier states; no blocking."
+      evidence: "Protocol test."
+
+    - area: "State transitions"
+      test: "Break the model mid-session, then repair it."
+      expected: "representation -> degraded(stale envelope retained) -> representation. Navigation never fully disappears."
+      evidence: "Lifecycle test — settles REQ-IDX-006."
+
+    - area: "Failure handling"
+      test: "sxr returns malformed JSON; sxr hangs past the timeout; sxr exits nonzero."
+      expected: "Distinct typed states (error / timeout / error), no model diagnostics, no hang."
+      evidence: "Adapter failure tests."
+
+    - area: "Observability"
+      test: "Run a session; inspect logs and domainforge/status."
+      expected: "Resolution timings, hashes, cache stats present; no source content in logs."
+      evidence: "Log assertion test."
+
+    - area: "Security/safety"
+      test: "Issue every passive request type against a workspace with a process-execution tripwire installed."
+      expected: "Zero process spawns, zero file writes."
+      evidence: "Side-effect-freedom test — the primary security gate (REQ-SEC-001)."
+
+    - area: "Affordance gating"
+      test: "Construct a workspace where each gated affordance's gate is unsatisfied."
+      expected: "No such action appears in the codeAction list as available."
+      evidence: "Gate enforcement test — settles REQ-AFF-002."
+
+    - area: "Epistemic typing"
+      test: "A model with an unmet evidence obligation and a residual."
+      expected: "Diagnostics have source realitytrace.* / evaluation.*, severity <= Information, and carry semantic_truth; none are Error."
+      evidence: "Diagnostic taxonomy test — settles REQ-DIAG-002."
+
+  variation_and_recovery:
+    - case: "sxr present but the repo is not enrolled."
+      why: "Distinguishes 'no data' from 'not configured'; the most common real-world state."
+      expected: "IntegrationState::not_configured with an actionable reason, not an empty evidence list."
+      evidence: "Degraded-mode test."
+
+    - case: "Envelope resolves with diagnostics (exit-1-but-valid shape)."
+      why: "observed — sxr-df documents this exact trap: classification must be by shape, not exit code."
+      expected: "Treated as Resolved; navigation works; diagnostics published."
+      evidence: "Shape classification test."
+
+    - case: "Pack set changes without a source change."
+      why: "Meaning can change with no edit — the case that motivates AFF-MEANING-CHANGED."
+      expected: "Envelope re-resolves (pack_set_hash changed); pack diagnostics update."
+      evidence: "Pack invalidation test."
+
+    - case: "Two declarations with identical content in one module."
+      why: "Exercises Occurrence{content_hash, duplicate_index} identity."
+      expected: "Distinct DeclarationKeys with correct duplicate_index; stable across re-resolution."
+      evidence: "Occurrence identity test."
+
+    - case: "File changed on disk outside the editor."
+      why: "Index staleness is silent without watched-file handling."
+      expected: "Envelope invalidates and re-resolves."
+      evidence: "Watched files test."
+
+  real_integration_condition: >-
+    Observation-tier and evaluation-tier claims MUST NOT be marked
+    evidence_backed on mocks alone. Real integration (an actual sxr binary with
+    an enrolled repo and a committed semantic.snapshot) is REQUIRED before any
+    T3/T4 capability is claimed complete.
+
+  real_integration_tests:
+    - "Enroll a fixture repo in a real sxr ledger, create a snapshot, and assert the LSP's DeclarationKey retrieves the expected records."
+    - "Advance the model, re-snapshot, and assert the LSP correctly marks prior observations stale."
+
+  skipped_test_rule: >-
+    Skipped REQUIRED integration tests MUST be reported as skipped, not passed,
+    and MUST prevent final conformance.
+
+# -----------------------------------------------------------------------------
+# 20. IMPLEMENTATION DEFINITION OF DONE
+# -----------------------------------------------------------------------------
+implementation_definition_of_done:
+  - "The crate builds, tests, and clippy-passes against a version-constrained domainforge-core."
+  - "The canonical-parity and determinism gates pass."
+  - "No grammar, resolution, or hashing logic exists in the LSP; the anti-duplication CI gate passes."
+  - "DeclarationKey identity stability and sensitivity tests pass, and byte-equality with sxr DeclKey is demonstrated."
+  - "Every LSP handler obtains its answer from the SemanticQuery facade; no handler contains semantic logic."
+  - "The diagnostic taxonomy is enforced by type, not convention, and the epistemic typing test passes."
+  - "Degraded-mode tests pass with each optional integration independently absent, with typed reasons."
+  - "The side-effect-freedom test passes for every passive request."
+  - "Every affordance carries a gate, and the gate enforcement test passes."
+  - "Observation/evaluation claims are marked partially_proven until real-integration tests run."
+  - "Capability classifications in the matrix are honoured: nothing marked not_semantically_meaningful is implemented."
+  - "A cold developer or agent can answer every spec_frame quality-gate question from this file alone."
+
+# -----------------------------------------------------------------------------
+# 21. ROADMAP BOUNDARIES
+# -----------------------------------------------------------------------------
+roadmap_boundaries:
+  incremental_envelope_resolution:
+    level: roadmap
+    future_shape: "DF-C4: a partial/incremental resolution API in domainforge-core."
+    current_requirement: "Only that the LSP isolate resolution behind L2 so it can be swapped, and that REQ-PERF-006 measurement happens."
+
+  live_evaluation_from_the_editor:
+    level: roadmap
+    future_shape: "A governed 'run the smallest relevant proof' action driving sxr's plan/run/verify machinery."
+    current_requirement: "Only that the affordance model can express requires_authority and governed execution. No such action is implemented now — no authority boundary for it has been designed (OQ-6)."
+
+  rename_as_conceptchange:
+    level: roadmap
+    future_shape: "A rename flow that generates a ConceptChange and migration policy instead of a text substitution."
+    current_requirement: "That plain rename is NOT offered, and that the MCP rename-preview tool is withdrawn."
+
+  multi_root_workspaces:
+    level: roadmap
+    future_shape: "Multiple entry points / workspace folders."
+    current_requirement: "That entry resolution is a single audited function with a deterministic, reported choice (OQ-3)."
+
+  lsp_crate_migration:
+    level: roadmap
+    future_shape: "Migration off tower-lsp 0.20 if maintenance becomes a risk."
+    current_requirement: "That L9 is a thin mechanical layer, so the protocol crate is replaceable."
+
+# -----------------------------------------------------------------------------
+# 22. OPEN QUESTIONS
+# -----------------------------------------------------------------------------
+open_questions:
+  - id: OQ-1
+    question: "Will DomainForge accept the span sidecar (DF-C3) as an out-of-envelope structure?"
+    status: RESOLVED
+    resolution: >-
+      Accepted by the maintainer (2026-09-03), who owns domainforge, sxr,
+      domainforge-lsp and domainforge-vsc-extension. The sidecar is implemented
+      OUTSIDE the hashed envelope payload, preserving semantic_closure_hash
+      invariance under formatting. DF-C3 is therefore not an external dependency
+      but a sequenced task in this plan's own scope.
+    binding_constraint_retained: >-
+      Maintainer ownership removes the negotiation, NOT the engineering
+      constraint. The hash-invariance test and the cross-repo DeclKey
+      byte-equality test remain REQUIRED. Owning both repositories makes it
+      easier, not safer, to accidentally couple them.
+
+  - id: OQ-2
+    question: "Does `sxr query evidence --entity` accept a DeclKey string today, or a different entity notion?"
+    status: RESOLVED_MOOT
+    resolution: >-
+      observed — the question is superseded by a more serious finding.
+      commands.rs:2378 `query_evidence` calls `projections::rebuild()` before
+      answering, so it writes. Whatever `entity` accepts, the LSP cannot call
+      this command. SXR-C1 is therefore a NEW read-only command, not a
+      validation of the existing one. See CLAIM-009.
+
+  - id: OQ-3
+    question: "How is the workspace entry point determined when a workspace has several .sea roots?"
+    status: RESOLVED
+    resolution: >-
+      observed — domainforge-core/src/cli/envelope.rs establishes the pattern:
+      `EnvelopeArgs { target: PathBuf }` (a single target file), then
+      `NamespaceRegistry::discover(&target)`, then
+      `registry.namespace_for(&target)` for the default namespace, then
+      `source_map_from_filesystem(&target, &source, registry, default_namespace)`
+      which RETURNS `(entry_logical_path, source_map)`. The entry is derived from
+      a target file plus a discovered registry — it is not a workspace-global
+      setting.
+      observed — .sea-registry.toml carries `version`, `default_namespace`, and
+      `[[namespaces]] { namespace, patterns: [glob] }`, so a workspace is
+      natively multi-namespace.
+      DESIGN CONSEQUENCE: the LSP MUST treat the ACTIVE DOCUMENT as the target
+      and derive the entry per-document via the same registry-discovery path,
+      reusing `source_map_from_filesystem` rather than inventing entry
+      resolution. `domainforge.workspace.entry` (section 10) is therefore an
+      OPTIONAL override, not the primary mechanism, and the config default
+      changes from "implementation-defined discovery" to "derive from the active
+      document via NamespaceRegistry::discover".
+    residual_resolved: >-
+      observed — module/resolver.rs:399 declares
+      `pub(crate) fn source_map_from_filesystem(...)`. It is NOT public, so the
+      LSP cannot call it today. Exposing it (and `NamespaceRegistry::discover`,
+      if likewise restricted) is a small, additive, low-risk upstream change with
+      no semantic content — folded into DF-C1 as DF-C1a. Without it the LSP would
+      have to reimplement source-map assembly and registry discovery, which is
+      precisely the duplication REQ-CANON-003 forbids.
+
+  - id: OQ-4
+    question: "What is the actual latency of full envelope resolution on a representative workspace?"
+    why_it_matters: "Decides whether DF-C4 is roadmap or required (REQ-PERF-006, CLAIM-010)."
+    status: unknown
+    resolution_path: "Measured in plan task T05."
+
+  - id: OQ-5
+    question: "Do generated projection artifacts record the semantic_closure_hash they were generated from?"
+    status: RESOLVED_PARTIAL
+    resolution: >-
+      observed — provenance exists but is NOT uniform across the ~25 projection
+      targets, and is not the semantic_closure_hash.
+      archimate/mod.rs stamps an XML comment via `with_provenance(body,
+      model_ref, created_at)` — a model_ref label plus a timestamp.
+      baml/render.rs and dspy/render.rs emit "Provenance: capability id `{cap}`,
+      source model hash `{hash}`" — a source model hash.
+      projection/ai_learning/provenance.rs defines a `Provenance` type carried
+      verbatim into dspy IR.
+      Other targets show no provenance stamp at all.
+    design_consequence: >-
+      AFF-STALE-PROJECTION MUST be scoped to targets that actually carry a source
+      hash, and MUST report `unknown` staleness for the rest. It MUST NOT infer
+      staleness from file mtime or regeneration order — that would assert a
+      correspondence the artifact does not record. Uniform closure-hash stamping
+      across projection targets is a reasonable upstream ask, but it is a
+      DomainForge concern and is NOT added to this plan.
+
+  - id: OQ-6
+    question: "Which authority governs running a verification from the editor?"
+    status: RESOLVED_DEFERRED
+    resolution: >-
+      Deliberately deferred past T15 (evaluation projection) by maintainer
+      decision (2026-09-03). Nothing in the plan up to that point depends on it.
+      'Run the verification' and 'create a snapshot' remain classified
+      unavailable/future under REQ-AFF-006 and MUST NOT appear as code actions.
+    revisit_trigger: >-
+      After the evaluation projection ships and there is real usage evidence that
+      the affordance is wanted. Designing an authority model before that evidence
+      exists would be speculative. This is a deferral, not a rejection: if the
+      answer later is 'the editor never runs verifications', that is a legitimate
+      outcome and simply makes the current classification permanent.
+
+  - id: OQ-7
+    question: "Is the VS Code extension actively maintained, and are coordinated releases available?"
+    status: RESOLVED
+    resolution: >-
+      observed — yes, there is a real release pipeline. The extension reached
+      v0.1.0, publishes to the Open VSX Registry, and has
+      .github/workflows/release.yml plus ci.yml. Coordinated releases ARE
+      available, so REQ-COMPAT-003 is a choice rather than a hard constraint.
+
+  - id: OQ-8
+    question: "Should the LSP consume domainforge-core via path dependency or a published crate version?"
+    status: RESOLVED
+    resolution: >-
+      observed — domainforge-core IS published to crates.io.
+      .github/workflows/release-crates.yml runs `cargo publish --manifest-path
+      domainforge-core/Cargo.toml`, deploy.yml has a "Publish domainforge-core to
+      crates.io" job, and .release-please-manifest.json tracks
+      domainforge-core 0.16.0 alongside the python and typescript packages.
+      RECOMMENDATION: depend on the PUBLISHED crate with a caret constraint
+      (`domainforge-core = "0.16"`), not a path. A published version is
+      structurally immune to the upstream rename/move that caused this outage,
+      because a version cannot be deleted from under the LSP. Retain the
+      upstream-compat CI job (REQ-COMPAT-005) building against domainforge HEAD
+      to surface breakage EARLY, and use a `[patch.crates-io]` entry for local
+      co-development when needed. This gets loud early warning without
+      reintroducing the fragile structural coupling.
+
+# -----------------------------------------------------------------------------
+# 23. CONFORMANCE TRACEABILITY
+# -----------------------------------------------------------------------------
+conformance_traceability:
+  high_risk_requirement_groups:
+    - group: "Semantic identity"
+      requirements: ["REQ-ID-001", "REQ-ID-002", "REQ-ID-003", "REQ-ID-004", "REQ-ID-005", "REQ-ID-007"]
+      confirmation: "adversarial"
+      why: "Everything downstream joins on this. A wrong key silently produces confident, wrong cross-system answers."
+
+    - group: "Canonical non-duplication"
+      requirements: ["REQ-CANON-002", "REQ-CANON-003", "REQ-CANON-004", "REQ-COMPAT-005"]
+      confirmation: "independent"
+      why: "This is the exact failure that broke the repository. It must be mechanically prevented, not remembered."
+
+    - group: "Epistemic typing and anti-collapse"
+      requirements: ["REQ-DIAG-002", "REQ-DIAG-003", "REQ-EVAL-003", "REQ-EVAL-004", "REQ-EVAL-005", "REQ-DEG-004"]
+      confirmation: "adversarial"
+      why: "The tool exists to preserve distinctions; collapsing them here would be self-defeating and is easy to do accidentally."
+
+    - group: "Passive side-effect freedom"
+      requirements: ["REQ-SEC-001", "REQ-SEC-002", "REQ-OBS-001", "REQ-OBS-003"]
+      confirmation: "adversarial"
+      why: "An editor that executes on hover is a security defect with a very wide blast radius."
+
+    - group: "Affordance gating"
+      requirements: ["REQ-AFF-001", "REQ-AFF-002", "REQ-AFF-003", "REQ-AFF-004", "REQ-AFF-006"]
+      confirmation: "peer"
+      why: "Presenting a gated action as available converts governance into a suggestion."
+
+  plan_projection_rule: >-
+    Every REQUIRED normative requirement MUST map to at least one plan task.
+    Every settlement-critical task MUST declare the requirement IDs it settles,
+    its proof level, evidence location, and confirmation mode. A requirement
+    without a plan task or settled evidence remains open.

@@ -10,8 +10,8 @@ keywords = ["lsp", "language-server", "sea", "domainforge", "dsl"]
 categories = ["development-tools", "text-editors"]
 
 [dependencies]
-# Core DSL logic from the main DomainForge repo
-sea-core = { path = "../domainforge/sea-core" }
+# Core DSL logic: published DomainForge release (crate renamed sea-core -> domainforge-core)
+sea-core = { package = "domainforge-core", version = "=0.18.2" }
 
 # LSP protocol implementation
 tower-lsp = "0.20"

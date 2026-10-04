@@ -11,7 +11,7 @@ categories = ["development-tools", "text-editors"]
 
 [dependencies]
 # Core DSL logic: published DomainForge release (crate renamed sea-core -> domainforge-core)
-sea-core = { package = "domainforge-core", version = "=0.18.2" }
+sea-core = { package = "domainforge-core", version = "=0.19.0" }
 
 # LSP protocol implementation
 tower-lsp = "0.20"

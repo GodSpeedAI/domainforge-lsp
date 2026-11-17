@@ -51,17 +51,16 @@ pub fn provide_code_actions(
                         actions.push(fix);
                     }
                 }
-                "E000" => {
+                "E000"
                     // Generic Error (legacy fallback for namespace issues)
                     // TODO: Remove this once all namespace errors use E500+
                     if diagnostic.message.to_lowercase().contains("module")
                         && diagnostic.message.to_lowercase().contains("resolved")
-                    {
+                    => {
                         if let Some(fix) = create_missing_import_fix(uri, diagnostic) {
                             actions.push(fix);
                         }
                     }
-                }
                 _ => {}
             }
         }

@@ -114,18 +114,9 @@ impl LspClient {
                                             }
                                         }
                                     }
-                                } else if method == "textDocument/didClose" {
-                                    if let Some(params) = msg.get("params") {
-                                        if let Some(uri) = params
-                                            .get("textDocument")
-                                            .and_then(|td| td.get("uri"))
-                                            .and_then(|u| u.as_str())
-                                        {
-                                            let mut cache = diagnostics_cache_clone.write().await;
-                                            cache.remove(uri);
-                                        }
-                                    }
                                 }
+                                // Note: textDocument/didClose is a client→server notification,
+                                // so we don't need to handle it here on the reader task.
                             } else if let Some(id) = msg.get("id").and_then(|id| id.as_i64()) {
                                 // It's a response
                                 if msg.get("result").is_some() || msg.get("error").is_some() {

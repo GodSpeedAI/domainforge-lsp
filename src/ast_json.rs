@@ -53,8 +53,7 @@ pub fn source_to_ast_json(source: &str, pretty: bool) -> Result<String, String> 
     let schema_ast: ast_schema::Ast = internal_ast.into();
 
     if pretty {
-        serde_json::to_string_pretty(&schema_ast)
-            .map_err(|e| format!("Serialization error: {}", e))
+        serde_json::to_string_pretty(&schema_ast).map_err(|e| format!("Serialization error: {}", e))
     } else {
         serde_json::to_string(&schema_ast).map_err(|e| format!("Serialization error: {}", e))
     }

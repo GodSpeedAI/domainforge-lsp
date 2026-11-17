@@ -1,13 +1,14 @@
 use std::path::Path;
 
-use sea_core::semantic_pack::{
-    compute_pack_content_hash, merge_packs, SemanticDiagnostic, SemanticDiagnosticCode,
-    SemanticPack, PackSet, ValidationOptions,
-};
 use sea_core::semantic_pack::schema::SourceRef;
+use sea_core::semantic_pack::{
+    compute_pack_content_hash, merge_packs, PackSet, SemanticDiagnostic, SemanticDiagnosticCode,
+    SemanticPack, ValidationOptions,
+};
 
 use crate::semantic_config::SemanticPackConfig;
 
+#[allow(clippy::result_large_err)] // SemanticDiagnostic is a domainforge-core type
 pub fn load_pack_from_path(path: &str) -> Result<SemanticPack, SemanticDiagnostic> {
     let file_path = Path::new(path);
 
@@ -40,7 +41,8 @@ pub fn load_pack_from_path(path: &str) -> Result<SemanticPack, SemanticDiagnosti
             priority: 0,
         },
         suggestions: vec![],
-        recoverability_hint: "Verify the pack file is valid JSON conforming to the semantic pack schema".to_string(),
+        recoverability_hint:
+            "Verify the pack file is valid JSON conforming to the semantic pack schema".to_string(),
     })
 }
 
@@ -94,7 +96,8 @@ pub fn load_pack_set(
                             priority: config.priority,
                         },
                         suggestions: vec![],
-                        recoverability_hint: "Sign the pack or disable require_signature".to_string(),
+                        recoverability_hint: "Sign the pack or disable require_signature"
+                            .to_string(),
                     };
                     errors.push(diag);
                     continue;
@@ -147,11 +150,7 @@ pub fn load_pack_set(
                 code: SemanticDiagnosticCode::PackSetConflict,
                 severity: sea_core::semantic_pack::DiagnosticSeverity::Error,
                 semantic_truth: sea_core::semantic_pack::SemanticTruth::Invalid,
-                message: format!(
-                    "Pack set conflict ({}): {}",
-                    c.detail,
-                    c.key
-                ),
+                message: format!("Pack set conflict ({}): {}", c.detail, c.key),
                 source_ref: SourceRef::workspace_root(),
                 pack_ref: sea_core::semantic_pack::schema::PackRef {
                     pack_id: c.pack_a_id.clone(),
@@ -160,16 +159,15 @@ pub fn load_pack_set(
                     priority: 0,
                 },
                 suggestions: vec![],
-                recoverability_hint: "Resolve the conflicting pack definitions or adjust priorities".to_string(),
+                recoverability_hint:
+                    "Resolve the conflicting pack definitions or adjust priorities".to_string(),
             })
             .collect()
     })
 }
 
-pub fn verify_expected_hash(
-    pack: &SemanticPack,
-    expected: &str,
-) -> Result<(), SemanticDiagnostic> {
+#[allow(clippy::result_large_err)] // SemanticDiagnostic is a domainforge-core type
+pub fn verify_expected_hash(pack: &SemanticPack, expected: &str) -> Result<(), SemanticDiagnostic> {
     let actual = compute_pack_content_hash(pack);
     if actual == expected {
         Ok(())
@@ -190,7 +188,8 @@ pub fn verify_expected_hash(
                 priority: 0,
             },
             suggestions: vec![],
-            recoverability_hint: "Update the expected_hash in configuration or regenerate the pack".to_string(),
+            recoverability_hint: "Update the expected_hash in configuration or regenerate the pack"
+                .to_string(),
         })
     }
 }

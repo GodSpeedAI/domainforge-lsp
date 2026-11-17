@@ -1,7 +1,6 @@
 use sea_core::semantic_pack::schema::{ConceptStatus, SemanticPack};
 use tower_lsp::lsp_types::{
-    CompletionItem, CompletionItemKind, Documentation, MarkupContent, MarkupKind,
-    InsertTextFormat,
+    CompletionItem, CompletionItemKind, Documentation, InsertTextFormat, MarkupContent, MarkupKind,
 };
 
 pub fn get_semantic_completions(
@@ -65,8 +64,7 @@ pub fn get_semantic_completions(
             .iter()
             .filter(|a| a.target_concept_id == concept.id)
             .find(|a| {
-                !lower_prefix.is_empty()
-                    && a.alias.to_ascii_lowercase().contains(&lower_prefix)
+                !lower_prefix.is_empty() && a.alias.to_ascii_lowercase().contains(&lower_prefix)
             })
             .map(|a| a.alias.clone());
 
@@ -110,9 +108,7 @@ pub fn get_semantic_completions(
     items
 }
 
-fn map_concept_kind(
-    kind: sea_core::semantic_pack::schema::ConceptKind,
-) -> CompletionItemKind {
+fn map_concept_kind(kind: sea_core::semantic_pack::schema::ConceptKind) -> CompletionItemKind {
     use sea_core::semantic_pack::schema::ConceptKind;
     match kind {
         ConceptKind::Entity => CompletionItemKind::CLASS,

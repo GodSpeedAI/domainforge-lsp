@@ -92,7 +92,7 @@ Entity "Test" {
             // Check that the error string contains location information
             // e.g. "at line 5, column 10" or "5:10:" format
             let error_str = other.to_string();
-            
+
             // Require location information pattern: either explicit "line X" and "column Y"
             // or a line:col format like "2:5:"
             let has_explicit_line_col = error_str.contains("line") && error_str.contains("column");

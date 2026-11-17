@@ -1,7 +1,5 @@
 use serde_json::Value;
-use tower_lsp::lsp_types::{
-    Diagnostic, DiagnosticSeverity, NumberOrString, Position, Range,
-};
+use tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity, NumberOrString, Position, Range};
 
 use sea_core::semantic_pack::{
     DiagnosticSeverity as SeaDiagnosticSeverity, SemanticDiagnostic, SemanticTruth,
@@ -9,10 +7,7 @@ use sea_core::semantic_pack::{
 
 use crate::line_index::LineIndex;
 
-pub fn semantic_diagnostic_to_lsp(
-    diag: &SemanticDiagnostic,
-    line_index: &LineIndex,
-) -> Diagnostic {
+pub fn semantic_diagnostic_to_lsp(diag: &SemanticDiagnostic, line_index: &LineIndex) -> Diagnostic {
     let start = line_index.position_of(diag.source_ref.start_byte);
     let end = line_index.position_of(diag.source_ref.end_byte);
 
@@ -33,15 +28,14 @@ pub fn semantic_diagnostic_to_lsp(
 
     let severity = map_severity(diag.severity);
 
-    let data = Some(Value::String(serde_json::to_string(&diag.semantic_truth).unwrap_or_default()));
+    let data = Some(Value::String(
+        serde_json::to_string(&diag.semantic_truth).unwrap_or_default(),
+    ));
 
     Diagnostic {
         range,
         severity: Some(severity),
-        code: Some(NumberOrString::String(format!(
-            "S{}",
-            diag.code.as_str()
-        ))),
+        code: Some(NumberOrString::String(format!("S{}", diag.code.as_str()))),
         source: Some("domainforge-semantic".to_string()),
         message: diag.message.clone(),
         data,

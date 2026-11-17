@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::num::NonZeroUsize;
 
 use sea_core::parse_to_graph;
-use sea_core::semantic_pack::{PackSet, SemanticDiagnostic, validate_graph_with_pack};
+use sea_core::semantic_pack::{validate_graph_with_pack, PackSet, SemanticDiagnostic};
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 use tokio::sync::RwLock;
@@ -27,9 +27,7 @@ use crate::hover::{DetailLevel, HoverPlusParams, HoverPlusResponse};
 use crate::line_index::LineIndex;
 use crate::navigation;
 use crate::semantic_config::SemanticConfig;
-use crate::semantic_diagnostics::{
-    create_pack_diagnostic, semantic_diagnostic_to_lsp,
-};
+use crate::semantic_diagnostics::{create_pack_diagnostic, semantic_diagnostic_to_lsp};
 use crate::semantic_index::SemanticIndex;
 use crate::semantic_pack_loader;
 
@@ -207,28 +205,25 @@ impl Backend {
                 let config = self.config.read().await;
                 let packs = self.semantic_pack_set.read().await;
                 let errors = self.semantic_pack_errors.read().await;
-                (
-                    config.semantic.enabled,
-                    packs.clone(),
-                    errors.clone(),
-                )
+                (config.semantic.enabled, packs.clone(), errors.clone())
             };
 
             if semantic_enabled {
                 if !pack_errors.is_empty() {
                     for err in &pack_errors {
-                        all_diagnostics.push(create_pack_diagnostic(
-                            &err.message,
-                            err.code.as_str(),
-                        ));
+                        all_diagnostics
+                            .push(create_pack_diagnostic(&err.message, err.code.as_str()));
                     }
                 } else if let Some(ref pack_set) = pack_set_opt {
-                    if let Some(ref pack_ref) = pack_set.packs.first() {
+                    if let Some(pack_ref) = pack_set.packs.first() {
                         let config = self.config.read().await;
                         let options = config.semantic.to_validation_options();
 
                         let pack_result = match std::fs::read_to_string(&pack_ref.path_or_uri) {
-                            Ok(content) => match serde_json::from_str::<sea_core::semantic_pack::SemanticPack>(&content) {
+                            Ok(content) => match serde_json::from_str::<
+                                sea_core::semantic_pack::SemanticPack,
+                            >(&content)
+                            {
                                 Ok(pack) => {
                                     let source_uri = uri.to_string();
                                     Some(validate_graph_with_pack(&pack, &source_uri, &options))
@@ -246,10 +241,8 @@ impl Backend {
 
                         if let Some(result) = pack_result {
                             for diag in &result.diagnostics {
-                                all_diagnostics.push(semantic_diagnostic_to_lsp(
-                                    diag,
-                                    &state.line_index,
-                                ));
+                                all_diagnostics
+                                    .push(semantic_diagnostic_to_lsp(diag, &state.line_index));
                             }
                         }
                     }
@@ -315,7 +308,8 @@ impl Backend {
         }
     }
 
-    pub async fn hover_plus(&self, params: HoverPlusParams) -> Result<Option<HoverPlusResponse>> {        let uri = params.text_document.uri;
+    pub async fn hover_plus(&self, params: HoverPlusParams) -> Result<Option<HoverPlusResponse>> {
+        let uri = params.text_document.uri;
         let detail_level = DetailLevel::parse(params.max_detail_level.as_deref());
 
         let Some(state) = ({
@@ -729,18 +723,16 @@ impl LanguageServer for Backend {
             let config = self.config.read().await;
             let packs = self.semantic_pack_set.read().await;
             let errors = self.semantic_pack_errors.read().await;
-            (
-                config.semantic.enabled,
-                packs.clone(),
-                errors.clone(),
-            )
+            (config.semantic.enabled, packs.clone(), errors.clone())
         };
 
         if semantic_enabled && pack_errors.is_empty() {
             if let Some(ref pack_set) = pack_set_opt {
-                if let Some(ref pack_ref) = pack_set.packs.first() {
+                if let Some(pack_ref) = pack_set.packs.first() {
                     if let Ok(content) = std::fs::read_to_string(&pack_ref.path_or_uri) {
-                        if let Ok(pack) = serde_json::from_str::<sea_core::semantic_pack::SemanticPack>(&content) {
+                        if let Ok(pack) =
+                            serde_json::from_str::<sea_core::semantic_pack::SemanticPack>(&content)
+                        {
                             let offset = state.line_index.offset_of(position);
                             let prefix = offset
                                 .map(|o| extract_prefix_at(&state.text, o))
@@ -748,9 +740,7 @@ impl LanguageServer for Backend {
 
                             let semantic_items =
                                 crate::semantic_completion::get_semantic_completions(
-                                    &pack,
-                                    &prefix,
-                                    false,
+                                    &pack, &prefix, false,
                                 );
 
                             match &mut response {

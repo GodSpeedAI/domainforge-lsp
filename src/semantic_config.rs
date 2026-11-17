@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 
-use sea_core::semantic_pack::diagnostics::{DeprecatedPolicy, UnknownConceptPolicy, ValidationMode};
+use sea_core::semantic_pack::diagnostics::{
+    DeprecatedPolicy, UnknownConceptPolicy, ValidationMode,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
